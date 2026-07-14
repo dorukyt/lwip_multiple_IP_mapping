@@ -31,6 +31,9 @@
 #include "locator.h"
 
 #include "network_diagnostics.h"
+#include "udp_app.h"
+#include <string.h>
+#include <stdio.h>
 
 #define TMS570_MDIO_BASE_ADDR 	0xFCF78900u
 #define TMS570_EMAC_BASE_ADDR	0xFCF78000u
@@ -172,6 +175,18 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 	sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
 	/* Loop forever.  All the work is done in interrupt handlers. */
+
+	/* 4) UDP uygulama modulu: hem ana (192.168.2.44) hem alias (192.168.2.50)
+	 *    IP uzerinden port 5000'i dinle.
+	 *    IP_ADDR_ANY'ye bind edildigi icin tek PCB her iki IP'yi de yakalar. */
+	if (udp_app_init(5000) == ERR_OK) {
+		sciDisplayText(sciREGx, (uint8_t*)"\r\nUDP App init OK (port 5000)", 29);
+		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+	} else {
+		sciDisplayText(sciREGx, (uint8_t*)"\r\nUDP App init FAILED!", 22);
+		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+	}
+
 	while(1)
 	{
 		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
@@ -209,14 +224,14 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 
 		temp_ip.addr = anaIpAddr;
         ipaddr_ntoa_r(&temp_ip, str_anaIp, sizeof(str_anaIp));
-        txtIPAddrItoA = (uint8_t*) str_anaIp; // Terminale basýlacak pointer'ý ayarla
+        txtIPAddrItoA = (uint8_t*) str_anaIp; // Terminale basÄ±lacak pointer'Ä± ayarla
 
         if (sanalIpAddr != 0)
         {
-            // Sanal IP'yi text'e çevir ve bizim str_sanalIp dizimize yaz
+            // Sanal IP'yi text'e Ã§evir ve bizim str_sanalIp dizimize yaz
             temp_ip.addr = sanalIpAddr;
             ipaddr_ntoa_r(&temp_ip, str_sanalIp, sizeof(str_sanalIp));
-            txtIPAddrItoA2 = (uint8_t*) str_sanalIp; // Ýkinci pointer'ý ayarla
+            txtIPAddrItoA2 = (uint8_t*) str_sanalIp; // Ä°kinci pointer'Ä± ayarla
         }
 
         sciDisplayText(sciREGx, txtIPAddrTxt, sizeof(txtIPAddrTxt));
@@ -228,10 +243,12 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
         sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
 
+#if 0
+
 		/* Before printing the next set, wait for a character on the terminal */
 		sciReceive(sciREGx, 1, &testChar);
 
-        uint8_t rx_byte = 0; // rx_byte sýfýrlanmalýdýr ki önceki karakteri hatýrlamasýn
+        uint8_t rx_byte = 0; // rx_byte sÄ±fÄ±rlanmalÄ±dÄ±r ki Ã¶nceki karakteri hatÄ±rlamasÄ±n
 
         /* Terminalden bir karakter bekle */
         sciReceive(sciREGx, 1, &rx_byte);
@@ -263,26 +280,28 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
              * Test4: Dogru MAC + Alias IP  */
             run_ping_diagnostics();
         }
+
         else if (rx_byte == 't')
         {
+
             /* ---- Elle parametreli ozel test ----
              * Istediginiz IP ve MAC kombinasyonunu asagida degistirin. */
             ping_test_params_t test;
             int arp_sonuc, icmp_sonuc;
 
-            /* Hedef MAC — kartin kendi MAC'i */
+            /* Hedef MAC â€” kartin kendi MAC'i */
             test.dst_mac[0]=0x00; test.dst_mac[1]=0x08; test.dst_mac[2]=0xEE;
             test.dst_mac[3]=0x03; test.dst_mac[4]=0xA6; test.dst_mac[5]=0x6C;
 
-            /* Kaynak MAC — sahte PC */
+            /* Kaynak MAC â€” sahte PC */
             test.src_mac[0]=0x11; test.src_mac[1]=0x22; test.src_mac[2]=0x33;
             test.src_mac[3]=0x44; test.src_mac[4]=0x55; test.src_mac[5]=0x66;
 
-            /* Kaynak IP — sahte PC */
+            /* Kaynak IP â€” sahte PC */
             test.src_ip[0]=192; test.src_ip[1]=168;
             test.src_ip[2]=2;   test.src_ip[3]=100;
 
-            /* Hedef IP — TEST ETMEK ISTEDIGINIZ IP'YI BURAYA YAZIN */
+            /* Hedef IP â€” TEST ETMEK ISTEDIGINIZ IP'YI BURAYA YAZIN */
             test.dst_ip[0]=192; test.dst_ip[1]=168;
             test.dst_ip[2]=2;   test.dst_ip[3]=50;    /*  alias IP */
 
@@ -292,9 +311,63 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
             if (arp_sonuc == 1)  sciDisplayText(sciREGx, (uint8_t*)"EVET\r\n", 6);
             else                 sciDisplayText(sciREGx, (uint8_t*)"HAYIR\r\n", 7);
 
+
             sciDisplayText(sciREGx, (uint8_t*)"ICMP: ", 6);
             if (icmp_sonuc == 1) sciDisplayText(sciREGx, (uint8_t*)"EVET\r\n", 6);
             else                 sciDisplayText(sciREGx, (uint8_t*)"HAYIR\r\n", 7);
+
+        }
+
+#endif
+
+        /* Terminalden bir karakter bekle (bloklayici) */
+        uint8_t rx_byte = 0;
+        sciReceive(sciREGx, 1, &rx_byte);
+
+        /* ============================================================
+         *  UDP TEST KOMUTLARI (aktif)
+         *
+         *  'u'  192.168.2.100:5000 adresine test mesaji gonder
+         * ============================================================ */
+        if (rx_byte == 'u')
+        {
+            /* ---- UDP gonderme testi ----
+             * Hedef: 192.168.2.100 port 5000
+             * Degistirmek icin asagidaki IP4_ADDR satirini duzenleyin. */
+            ip_addr_t dest;
+            IP4_ADDR(&dest, 192, 168, 2, 100);
+            const char *test_msg = "Hello from TMS570!";
+            err_t ret = udp_app_send(&dest, 5000,
+                                     (const uint8_t *)test_msg,
+                                     (u16_t)strlen(test_msg));
+            if (ret == ERR_OK) {
+                sciDisplayText(sciREGx, (uint8_t*)"\r\nUDP sent OK\r\n", 16);
+            } else {
+                sciDisplayText(sciREGx, (uint8_t*)"\r\nUDP send FAIL\r\n", 18);
+            }
+        }
+
+        /* UDP RX poll --- ISR'dan gelen paket varsa UART'a yazdir */
+        {
+            udp_app_rx_msg_t rx;
+            if (udp_app_poll_rx(&rx)) {
+                char rx_info[80];
+                int n = snprintf(rx_info, sizeof(rx_info),
+                    "\r\nUDP RX: %u bytes from %s:%u\r\n",
+                    (unsigned)rx.data_len,
+                    ipaddr_ntoa(&rx.src_ip),
+                    (unsigned)rx.src_port);
+                sciDisplayText(sciREGx, (uint8_t*)rx_info, (uint32_t)n);
+
+                /* Gelen veriyi de yazdir (en fazla 64 byte) */
+                if (rx.data_len > 0) {
+                    u16_t print_len = rx.data_len;
+                    if (print_len > 64) print_len = 64;
+                    sciDisplayText(sciREGx, (uint8_t*)"Data: ", 6);
+                    sciDisplayText(sciREGx, rx.data, (uint32_t)print_len);
+                    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+                }
+            }
         }
 
 	}
