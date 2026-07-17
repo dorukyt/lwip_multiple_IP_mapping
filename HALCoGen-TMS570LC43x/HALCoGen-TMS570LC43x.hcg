@@ -218,7 +218,9 @@
       <HDRRTI>
         <NAME>HL_rti.h</NAME>
       </HDRRTI>
-      <SRCRTI/>
+      <SRCRTI>
+        <NAME>HL_rti.c</NAME>
+      </SRCRTI>
       <HDRGIO_R>
         <NAME>HL_reg_gio.h</NAME>
       </HDRGIO_R>
@@ -513,7 +515,7 @@
         <PATH>include\HL_rti.h</PATH>
       </HDRRTI>
       <SRCRTI>
-        <PATH/>
+        <PATH>source\HL_rti.c</PATH>
       </SRCRTI>
     </FILENAMES>
   </RTI>

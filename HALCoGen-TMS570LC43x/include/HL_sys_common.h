@@ -94,11 +94,11 @@ typedef enum config_value_type
 }config_value_type_t;
 
 
-#ifndef __big_endian__
-#define __big_endian__  1
+#ifndef __little_endian__
+#define __little_endian__  1
 #endif
-#ifndef __BIG_ENDIAN__
-#define __BIG_ENDIAN__  1
+#ifndef __LITTLE_ENDIAN__
+#define __LITTLE_ENDIAN__  1
 #endif
 
 /* USER CODE BEGIN (1) */

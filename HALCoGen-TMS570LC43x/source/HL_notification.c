@@ -51,11 +51,30 @@
 #include "HL_esm.h"
 #include "HL_gio.h"
 #include "HL_sci.h"
+#include "HL_rti.h"
 #include "HL_epc.h"
 #include "HL_emac.h" 
 #include "HL_sys_dma.h"
 
 /* USER CODE BEGIN (0) */
+extern void FonksiyonA(void);
+extern void FonksiyonB(void);
+
+//UDP gönderimi için interrupt bayraklarý
+volatile uint8_t send_main_flag = 0;
+volatile uint8_t send_alias_flag = 0;
+
+//kesme sýrasýnda bayrak deðiþimi fonksiyonlarý, her IP için ayrý bayrak
+void FonksiyonA(void)
+{
+    send_main_flag = 1;
+}
+
+void FonksiyonB(void)
+{
+    send_alias_flag = 1;
+}
+
 /* USER CODE END */
 #pragma WEAK(esmGroup1Notification)
 void esmGroup1Notification(esmBASE_t *esm, uint32 channel)
@@ -108,6 +127,35 @@ void dmaGroupANotification(dmaInterrupt_t inttype, uint32 channel)
 /* USER CODE END */
 
 /* USER CODE BEGIN (11) */
+/* USER CODE END */
+#pragma WEAK(rtiNotification)
+void rtiNotification(rtiBASE_t *rtiREG, uint32 notification)
+{
+/*  enter user code between the USER CODE BEGIN and USER CODE END. */
+/* USER CODE BEGIN (12) */
+    //char testMsg[] = "ISR GIRDI!\r\n";
+    //sciSend(sciREG1, strlen(testMsg), (uint8*)testMsg);
+    // Kesme Compare 0'dan mý geliyor doðrulama
+    if (notification == rtiNOTIFICATION_COMPARE0)
+    {
+        // Statik deðiþken: Fonksiyondan çýkýlsa bile deðerini hafýzada tutar
+        static uint8_t toggle = 0;
+
+        if (toggle == 0)
+        {
+            FonksiyonA(); // 0., 1., 2. saniyelerde çalýþýr
+            toggle = 1;   // Bir sonraki kesmede diðer bloða geçmesi için
+        }
+        else
+        {
+            FonksiyonB(); // 0.5, 1.5, 2.5. saniyelerde çalýþýr
+            toggle = 0;   // Baþa dönmesi için
+        }
+    }
+    /* USER CODE END */
+}
+
+/* USER CODE BEGIN (13) */
 /* USER CODE END */
 #pragma WEAK(gioNotification)
 void gioNotification(gioPORT_t *port, uint32 bit)
