@@ -31,7 +31,7 @@
 #include "locator.h"
 
 #include "network_diagnostics.h"
-#include "udp_app.h"
+#include "UDP_source.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -76,7 +76,7 @@ void smallDelay(void) {
 
 void EMAC_LwIP_Main (uint8_t * macAddress)
 {
-    uint8_t 		testChar;
+    //uint8_t 		testChar;
     struct in_addr 	devIPAddress;
     struct in_addr 	devIPAddress2;
     unsigned int	anaIpAddr;
@@ -169,7 +169,7 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 
 	LocatorConfig(macAddress, "HDK enet_lwip (dual-ip)");
 
-	sciDisplayText(sciREGx, (uint8_t*)"Starting Web Server", sizeof("Starting Web Server"));
+	//sciDisplayText(sciREGx, (uint8_t*)"Starting Web Server", sizeof("Starting Web Server"));
 	//httpd_init();
 	sciDisplayText(sciREGx, (uint8_t*)"..DONE", sizeof("..DONE"));
 	sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
@@ -179,8 +179,8 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 	/* 4) UDP uygulama modulu: hem ana (192.168.2.44) hem alias (192.168.2.50)
 	 *    IP uzerinden port 5000'i dinle.
 	 *    IP_ADDR_ANY'ye bind edildigi icin tek PCB her iki IP'yi de yakalar. */
-	if (udp_app_init(5000) == ERR_OK) {
-		sciDisplayText(sciREGx, (uint8_t*)"\r\nUDP App init OK (port 5000)", 29);
+	if (udp_source_init(5000) == ERR_OK) {
+		sciDisplayText(sciREGx, (uint8_t*)"\r\nUDP Source init OK (port 5000)", 32);
 		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 	} else {
 		sciDisplayText(sciREGx, (uint8_t*)"\r\nUDP App init FAILED!", 22);
@@ -320,6 +320,8 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 
 #endif
 
+
+#if 0
         /* Terminalden bir karakter bekle (bloklayici) */
         uint8_t rx_byte = 0;
         sciReceive(sciREGx, 1, &rx_byte);
@@ -349,8 +351,8 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 
         /* UDP RX poll --- ISR'dan gelen paket varsa UART'a yazdir */
         {
-            udp_app_rx_msg_t rx;
-            if (udp_app_poll_rx(&rx)) {
+            udp_rx_msg_t rx;
+            if (udp_source_poll_rx(&rx)) {
                 char rx_info[80];
                 int n = snprintf(rx_info, sizeof(rx_info),
                     "\r\nUDP RX: %u bytes from %s:%u\r\n",
@@ -369,9 +371,25 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
                 }
             }
         }
+#endif
 
-	}
+
+
+        ip_addr_t dest;
+        ip_addr_t main_ip, alias_ip;
+        IP4_ADDR(&dest, 192, 168, 2, 100);
+        IP4_ADDR(&main_ip, 192, 168, 2, 44);
+        IP4_ADDR(&alias_ip, 192, 168, 2, 50);
+        const char *main_message = "Hello from 192.168.2.44";
+        const char *alias_message = "Hello from 192.168.2.50";
+        err_t err_main = udp_data_send(&main_ip, &dest, 5000,(const u8_t *) main_message, (u16_t)strlen(main_message));
+        smallDelay();
+        err_t err_alias = udp_data_send(&alias_ip, &dest, 5000,(const u8_t *) alias_message, (u16_t)strlen(alias_message));
+
+
+    }
 }
+
 
 
 void iommUnlock(void) {
