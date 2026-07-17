@@ -94,20 +94,21 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
      * ip_ana : cihazin birincil (default route'un ciktigi) adresi
      * ip_sanal: ayni fiziksel EMAC + ayni MAC uzerinde ikinci (alias) IP
      */
-    uint8_t ip_ana[4]      = { 192, 168, 2, 44  };
+    uint8_t ip_ana[4]      = { 10, 0, 0, 10  };
     uint8_t netmask_ana[4] = { 255, 255, 255, 0 };
-    uint8_t gateway_ana[4] = { 192, 168, 2, 254 };
+    uint8_t gateway_ana[4] = { 10, 0, 0, 1 };
 
-    uint8_t ip_sanal[4]      = { 192, 168, 2, 50 };
+    uint8_t ip_sanal[4]      = { 11, 0, 0, 11 };
     uint8_t netmask_sanal[4] = { 255, 255, 255, 0 };
+    uint8_t gateway_sanal[4] = { 11, 0, 0, 1 };
 
     ip_addr_t dest;
     ip_addr_t main_ip, alias_ip;
-    IP4_ADDR(&dest, 192, 168, 2, 100);
-    IP4_ADDR(&main_ip, 192, 168, 2, 44);
-    IP4_ADDR(&alias_ip, 192, 168, 2, 50);
-    const char *main_message = "Hello from 192.168.2.44";
-    const char *alias_message = "Hello from 192.168.2.50";
+    IP4_ADDR(&dest, 10, 0, 0, 100);
+    IP4_ADDR(&main_ip, 10, 0, 0, 10);
+    IP4_ADDR(&alias_ip, 11, 0, 0, 11);
+    const char *main_message = "Hello from 10.0.0.10";
+    const char *alias_message = "Hello from 11.0.0.11";
 
 	sciInit();
 
@@ -160,7 +161,7 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 	sanalIpAddr = lwIPAliasAdd(0,
 		*((uint32_t *)ip_sanal),
 		*((uint32_t *)netmask_sanal),
-		*((uint32_t *)gateway_ana));
+		*((uint32_t *)gateway_sanal));
 
 	if (0 == sanalIpAddr)
 	{
