@@ -54,6 +54,8 @@ uint8_t		txtBigEndian[]		= {"Big Endian device"};
 uint8_t		txtEnetInit[]		= {"Initializing ethernet (dual static IP)"};
 uint8_t		txtIPAddrTxt[]		= {"Ana IP Address:   "};
 uint8_t		txtIPAddrTxt2[]		= {"Sanal IP Address: "};
+uint8_t     txtIPAddrTxt3[]     = {"Alici IP Address: "};
+uint8_t     txtIPAddrTxt3_IP[]     = {"192.168.2.100"};
 uint8_t		txtNote1[]			= {"Webserver accessible @ http:\\\\"};
 uint8_t		txtErrorInit[]		= {"-------- ERROR INITIALIZING HARDWARE --------"};
 uint8_t		 * txtIPAddrItoA;
@@ -67,6 +69,9 @@ void 	iommMuxEnableMii	(void);
 void 	IntMasterIRQEnable	(void);
 void 	smallDelay			(void);
 void 	sciDisplayText		(sciBASE_t *sci, uint8_t *text,uint32_t length);
+
+extern volatile uint8_t send_main_flag;
+extern volatile uint8_t send_alias_flag;
 
 void smallDelay(void) {
 	  static volatile unsigned int delayval;
@@ -95,6 +100,14 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 
     uint8_t ip_sanal[4]      = { 192, 168, 2, 50 };
     uint8_t netmask_sanal[4] = { 255, 255, 255, 0 };
+
+    ip_addr_t dest;
+    ip_addr_t main_ip, alias_ip;
+    IP4_ADDR(&dest, 192, 168, 2, 100);
+    IP4_ADDR(&main_ip, 192, 168, 2, 44);
+    IP4_ADDR(&alias_ip, 192, 168, 2, 50);
+    const char *main_message = "Hello from 192.168.2.44";
+    const char *alias_message = "Hello from 192.168.2.50";
 
 	sciInit();
 
@@ -187,61 +200,67 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 	}
 
-	while(1)
-	{
-		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
-		sciDisplayText(sciREGx, txtTitle, sizeof(txtTitle));
-		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    sciDisplayText(sciREGx, txtTitle, sizeof(txtTitle));
+    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
-		sciDisplayText(sciREGx, txtTI, sizeof(txtTI));
-		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    sciDisplayText(sciREGx, txtTI, sizeof(txtTI));
+    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 #ifdef __little_endian__        
-		sciDisplayText(sciREGx, txtLittleEndian, sizeof(txtLittleEndian));
-		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    sciDisplayText(sciREGx, txtLittleEndian, sizeof(txtLittleEndian));
+    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 #else        
-		sciDisplayText(sciREGx, txtBigEndian, sizeof(txtBigEndian));
-		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    sciDisplayText(sciREGx, txtBigEndian, sizeof(txtBigEndian));
+    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
 
 #endif
-		/*
-		sciDisplayText(sciREGx, txtIPAddrTxt, sizeof(txtIPAddrTxt));
-		sciDisplayText(sciREGx, txtIPAddrItoA, 16);
-		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    /*
+     sciDisplayText(sciREGx, txtIPAddrTxt, sizeof(txtIPAddrTxt));
+     sciDisplayText(sciREGx, txtIPAddrItoA, 16);
+     sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
-		if (sanalIpAddr != 0)
-		{
-			sciDisplayText(sciREGx, txtIPAddrTxt2, sizeof(txtIPAddrTxt2));
-			sciDisplayText(sciREGx, txtIPAddrItoA2, 16);
-			sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-		}
+     if (sanalIpAddr != 0)
+     {
+     sciDisplayText(sciREGx, txtIPAddrTxt2, sizeof(txtIPAddrTxt2));
+     sciDisplayText(sciREGx, txtIPAddrItoA2, 16);
+     sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+     }
 
-		sciDisplayText(sciREGx, txtNote1, sizeof(txtNote1));
-		sciDisplayText(sciREGx, txtIPAddrItoA, 16);
-		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-		*/
+     sciDisplayText(sciREGx, txtNote1, sizeof(txtNote1));
+     sciDisplayText(sciREGx, txtIPAddrItoA, 16);
+     sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+     */
 
-		temp_ip.addr = anaIpAddr;
-        ipaddr_ntoa_r(&temp_ip, str_anaIp, sizeof(str_anaIp));
-        txtIPAddrItoA = (uint8_t*) str_anaIp; // Terminale basılacak pointer'ı ayarla
+    temp_ip.addr = anaIpAddr;
+    ipaddr_ntoa_r(&temp_ip, str_anaIp, sizeof(str_anaIp));
+    txtIPAddrItoA = (uint8_t*) str_anaIp; // Terminale basılacak pointer'ı ayarla
 
-        if (sanalIpAddr != 0)
-        {
-            // Sanal IP'yi text'e çevir ve bizim str_sanalIp dizimize yaz
-            temp_ip.addr = sanalIpAddr;
-            ipaddr_ntoa_r(&temp_ip, str_sanalIp, sizeof(str_sanalIp));
-            txtIPAddrItoA2 = (uint8_t*) str_sanalIp; // İkinci pointer'ı ayarla
-        }
+    if (sanalIpAddr != 0)
+    {
+        // Sanal IP'yi text'e çevir ve bizim str_sanalIp dizimize yaz
+        temp_ip.addr = sanalIpAddr;
+        ipaddr_ntoa_r(&temp_ip, str_sanalIp, sizeof(str_sanalIp));
+        txtIPAddrItoA2 = (uint8_t*) str_sanalIp; // İkinci pointer'ı ayarla
+    }
 
-        sciDisplayText(sciREGx, txtIPAddrTxt, sizeof(txtIPAddrTxt));
-        sciDisplayText(sciREGx, txtIPAddrItoA, 16);
-        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    sciDisplayText(sciREGx, txtIPAddrTxt, sizeof(txtIPAddrTxt));
+    sciDisplayText(sciREGx, txtIPAddrItoA, 16);
+    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
-        sciDisplayText(sciREGx, txtIPAddrTxt2, sizeof(txtIPAddrTxt2));
-        sciDisplayText(sciREGx, txtIPAddrItoA2, 16);
-        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    sciDisplayText(sciREGx, txtIPAddrTxt2, sizeof(txtIPAddrTxt2));
+    sciDisplayText(sciREGx, txtIPAddrItoA2, 16);
+    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
+    sciDisplayText(sciREGx, txtIPAddrTxt3, sizeof(txtIPAddrTxt3));
+    sciDisplayText(sciREGx, txtIPAddrTxt3_IP, sizeof(txtIPAddrTxt3_IP));
+    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+
+
+
+	while(1)
+	{
 
 #if 0
 
@@ -321,70 +340,38 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 #endif
 
 
-#if 0
-        /* Terminalden bir karakter bekle (bloklayici) */
-        uint8_t rx_byte = 0;
-        sciReceive(sciREGx, 1, &rx_byte);
-
-        /* ============================================================
-         *  UDP TEST KOMUTLARI (aktif)
-         *
-         *  'u'  192.168.2.100:5000 adresine test mesaji gonder
-         * ============================================================ */
-        if (rx_byte == 'u')
-        {
-            /* ---- UDP gonderme testi ----
-             * Hedef: 192.168.2.100 port 5000
-             * Degistirmek icin asagidaki IP4_ADDR satirini duzenleyin. */
-            ip_addr_t dest;
-            IP4_ADDR(&dest, 192, 168, 2, 100);
-            const char *test_msg = "Hello from TMS570!";
-            err_t ret = udp_app_send(&dest, 5000,
-                                     (const uint8_t *)test_msg,
-                                     (u16_t)strlen(test_msg));
-            if (ret == ERR_OK) {
-                sciDisplayText(sciREGx, (uint8_t*)"\r\nUDP sent OK\r\n", 16);
-            } else {
-                sciDisplayText(sciREGx, (uint8_t*)"\r\nUDP send FAIL\r\n", 18);
-            }
-        }
-
         /* UDP RX poll --- ISR'dan gelen paket varsa UART'a yazdir */
-        {
-            udp_rx_msg_t rx;
-            if (udp_source_poll_rx(&rx)) {
-                char rx_info[80];
-                int n = snprintf(rx_info, sizeof(rx_info),
-                    "\r\nUDP RX: %u bytes from %s:%u\r\n",
-                    (unsigned)rx.data_len,
-                    ipaddr_ntoa(&rx.src_ip),
-                    (unsigned)rx.src_port);
-                sciDisplayText(sciREGx, (uint8_t*)rx_info, (uint32_t)n);
-
-                /* Gelen veriyi de yazdir (en fazla 64 byte) */
-                if (rx.data_len > 0) {
-                    u16_t print_len = rx.data_len;
-                    if (print_len > 64) print_len = 64;
-                    sciDisplayText(sciREGx, (uint8_t*)"Data: ", 6);
-                    sciDisplayText(sciREGx, rx.data, (uint32_t)print_len);
-                    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+                {
+                    udp_rx_msg_t rx;
+                    if (udp_source_poll_rx(&rx)) {
+                        char rx_info[80];
+                        int n = snprintf(rx_info, sizeof(rx_info),
+                            "\r\nUDP RX: %u bytes from %s:%u\r\n",
+                            (unsigned)rx.data_len,
+                            ipaddr_ntoa(&rx.src_ip),
+                            (unsigned)rx.src_port);
+                        sciDisplayText(sciREGx, (uint8_t*)rx_info, (uint32_t)n);
+                        /* Gelen veriyi de yazdir (en fazla 64 byte) */
+                        if (rx.data_len > 0) {
+                            u16_t print_len = rx.data_len;
+                            if (print_len > 64) print_len = 64;
+                            sciDisplayText(sciREGx, (uint8_t*)"Data: ", 6);
+                            sciDisplayText(sciREGx, rx.data, (uint32_t)print_len);
+                            sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+                        }
+                    }
                 }
-            }
-        }
-#endif
 
-
-
-        ip_addr_t dest;
-        ip_addr_t main_ip, alias_ip;
-        IP4_ADDR(&dest, 192, 168, 2, 100);
-        IP4_ADDR(&main_ip, 192, 168, 2, 44);
-        IP4_ADDR(&alias_ip, 192, 168, 2, 50);
-        const char *main_message = "Hello from 192.168.2.44";
-        const char *alias_message = "Hello from 192.168.2.50";
-        err_t err_main = udp_data_send(&main_ip, &dest, 5000,(const u8_t *) main_message, (u16_t)strlen(main_message));
-        smallDelay();
-        err_t err_alias = udp_data_send(&alias_ip, &dest, 5000,(const u8_t *) alias_message, (u16_t)strlen(alias_message));
+                if (1 == send_main_flag)
+                {
+                    send_main_flag = 0;
+                    udp_data_send(&main_ip, &dest, 5000, (const u8_t *)main_message, (u16_t)strlen(main_message));
+                }
+                if (1 == send_alias_flag)
+                {
+                    send_alias_flag = 0;
+                    udp_data_send(&alias_ip, &dest, 5000, (const u8_t *)alias_message, (u16_t)strlen(alias_message));
+                }
 
 
     }
