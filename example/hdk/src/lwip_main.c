@@ -166,6 +166,9 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 	}
 
+	struct netif *g_main_netif  = lwIPNetifPtrGet(0);
+	struct netif *g_alias_netif = lwIPAliasNetifPtrGet(0);
+
 	sciDisplayText(sciREGx, (uint8_t*)"..DONE", sizeof("..DONE"));
 	sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
@@ -185,18 +188,47 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 	sciDisplayText(sciREGx, (uint8_t*)"..DONE", sizeof("..DONE"));
 	sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
-	/* Loop forever.  All the work is done in interrupt handlers. */
+	u8_t h_main;
+	u8_t h_alias;
 
-	/* 4) UDP uygulama modulu: hem ana (192.168.2.44) hem alias (192.168.2.50)
-	 *    IP uzerinden port 5000'i dinle.
-	 *    IP_ADDR_ANY'ye bind edildigi icin tek PCB her iki IP'yi de yakalar. */
-	if (udp_source_init(5000) == ERR_OK) {
-		sciDisplayText(sciREGx, (uint8_t*)"\r\nUDP Source init OK (port 5000)", 32);
-		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-	} else {
-		sciDisplayText(sciREGx, (uint8_t*)"\r\nUDP App init FAILED!", 22);
-		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-	}
+	if (udp_source_add_listener(&g_main_netif->ip_addr, 5000, &h_main) == ERR_OK)
+    {
+        char ip_str[16];
+        ipaddr_ntoa_r(&g_main_netif->ip_addr, ip_str, sizeof(ip_str));
+
+        char msg[64];
+        int msg_len = snprintf(msg, sizeof(msg),
+                               "\r\nUDP Source '%s' init OK (port 5000)",
+                               ip_str);
+        sciDisplayText(sciREGx, (uint8_t*) msg, (uint32_t) msg_len);
+        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    }
+    else
+    {
+        sciDisplayText(sciREGx, (uint8_t*) "\r\nUDP App init FAILED!", 28);
+        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    }
+
+    if (udp_source_add_listener(&g_alias_netif->ip_addr, 5000, &h_alias) == ERR_OK)
+    {
+        char ip_str[16];
+        ipaddr_ntoa_r(&g_alias_netif->ip_addr, ip_str, sizeof(ip_str));
+
+        char msg[64];
+        int msg_len = snprintf(msg, sizeof(msg),
+                               "\r\nUDP Source '%s' init OK (port 5000)",
+                               ip_str);
+        sciDisplayText(sciREGx, (uint8_t*) msg, (uint32_t) msg_len);
+        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    }
+    else
+    {
+        sciDisplayText(sciREGx, (uint8_t*) "\r\nUDP App Alias init FAILED!", 28);
+        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    }
+
+
+
 
     sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
@@ -240,30 +272,60 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
     sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
 
-
-	while (1)
+    /* Loop forever.  All the work is done in interrupt handlers. */
+    while (1)
     {
 
         /* UDP RX poll --- ISR'dan gelen paket varsa UART'a yazdir */
         {
-            udp_rx_msg_t rx;
-            if (udp_source_poll_rx(&rx))
+            udp_rx_msg_t rx_0;
+            if (udp_source_poll_rx(h_main, &rx_0))
             {
-                char rx_info[80];
-                int n = snprintf(rx_info, sizeof(rx_info),
-                                 "\r\nUDP RX: %u bytes from %s:%u\r\n",
-                                 (unsigned) rx.data_len,
-                                 ipaddr_ntoa(&rx.src_ip),
-                                 (unsigned) rx.src_port);
-                sciDisplayText(sciREGx, (uint8_t*) rx_info, (uint32_t) n);
-                /* Gelen veriyi de yazdir (en fazla 64 byte) */
-                if (rx.data_len > 0)
+                char my_ip_str[16];
+                ipaddr_ntoa_r(&g_main_netif->ip_addr, my_ip_str, sizeof(my_ip_str));
+
+                char rx0_info[112];
+                int n = snprintf(rx0_info, sizeof(rx0_info),
+                                 "\r\nUDP RX: %u bytes, %s:%u -> %s:%u\r\n",
+                                 (unsigned) rx_0.data_len,
+                                 ipaddr_ntoa(&rx_0.src_ip), (unsigned) rx_0.src_port,
+                                 my_ip_str, (unsigned) udp_source_get_local_port(h_main));
+                sciDisplayText(sciREGx, (uint8_t*) rx0_info, (uint32_t) n);
+
+                if (rx_0.data_len > 0)
                 {
-                    u16_t print_len = rx.data_len;
+                    u16_t print_len = rx_0.data_len;
                     if (print_len > 64)
                         print_len = 64;
                     sciDisplayText(sciREGx, (uint8_t*) "Data: ", 6);
-                    sciDisplayText(sciREGx, rx.data, (uint32_t) print_len);
+                    sciDisplayText(sciREGx, rx_0.data, (uint32_t) print_len);
+                    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+                }
+            }
+        }
+
+        {
+            udp_rx_msg_t rx_1;
+            if (udp_source_poll_rx(h_alias, &rx_1))
+            {
+                char my_ip_str[16];
+                ipaddr_ntoa_r(&g_alias_netif->ip_addr, my_ip_str, sizeof(my_ip_str));
+
+                char rx1_info[112];
+                int n = snprintf(rx1_info, sizeof(rx1_info),
+                                 "\r\nUDP RX: %u bytes, %s:%u -> %s:%u\r\n",
+                                 (unsigned) rx_1.data_len,
+                                 ipaddr_ntoa(&rx_1.src_ip), (unsigned) rx_1.src_port,
+                                 my_ip_str, (unsigned) udp_source_get_local_port(h_alias));
+                sciDisplayText(sciREGx, (uint8_t*) rx1_info, (uint32_t) n);
+
+                if (rx_1.data_len > 0)
+                {
+                    u16_t print_len = rx_1.data_len;
+                    if (print_len > 64)
+                        print_len = 64;
+                    sciDisplayText(sciREGx, (uint8_t*) "Data: ", 6);
+                    sciDisplayText(sciREGx, rx_1.data, (uint32_t) print_len);
                     sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
                 }
             }
@@ -272,13 +334,15 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
         if (1 == send_main_flag)
         {
             send_main_flag = 0;
-            udp_data_send(&anaIpAddr, &dest, 5000, (const u8_t*) main_message,
+            udp_data_send(h_main, g_main_netif, &dest, 5000,
+                          (const u8_t*) main_message,
                           (u16_t) strlen(main_message));
         }
+
         if (1 == send_alias_flag)
         {
             send_alias_flag = 0;
-            udp_data_send(&sanalIpAddr, &dest, 5000,
+            udp_data_send(h_alias, g_alias_netif, &dest, 4000,
                           (const u8_t*) alias_message,
                           (u16_t) strlen(alias_message));
         }

@@ -508,4 +508,18 @@ unsigned int lwIPAliasAdd(unsigned int primaryInstNum, unsigned int ipAddr,
     return (*ipAddrPtr);
 }
 
+struct netif* lwIPNetifPtrGet(unsigned int instNum)
+{
+    return &hdkNetIF[instNum];
+}
+
+struct netif* lwIPAliasNetifPtrGet(unsigned int aliasIdx)
+{
+    if (aliasIdx >= aliasNetifCount)
+    {
+        return NULL;
+    }
+    return &hdkAliasNetIF[aliasIdx];
+}
+
 /***************************** End Of File ***********************************/
