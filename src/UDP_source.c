@@ -23,15 +23,6 @@ static volatile u32_t s_rx_drop_count = 0;
 static void udp_rx_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
                             ip_addr_t *addr, u16_t port);
 
-static u32_t byte_swap32(u32_t v)
-{
-    return ((v & 0x000000FFUL) << 24) |
-           ((v & 0x0000FF00UL) << 8)  |
-           ((v & 0x00FF0000UL) >> 8)  |
-           ((v & 0xFF000000UL) >> 24);
-}
-
-
 err_t udp_source_init(u16_t listen_port){
 
     if(udp_pcb != NULL){
@@ -71,7 +62,7 @@ void udp_source_deinit(void){
     SYS_ARCH_UNPROTECT(lev);
 }
 
-err_t udp_data_send(ip_addr_t *ip_addr_tx, ip_addr_t *ip_addr_rx,
+err_t udp_data_send(unsigned int *ip_addr_tx, ip_addr_t *ip_addr_rx,
                     u16_t port_number, const u8_t *data, u16_t data_len)
 {
 
@@ -94,14 +85,12 @@ err_t udp_data_send(ip_addr_t *ip_addr_tx, ip_addr_t *ip_addr_rx,
     }
 
     //compare ip_addr_tx with netif_list->ip_addr to find the correct netif
-    //ip_addr_tx swapped because of little endian order (n->ip_addr has big endian order)
-
-    ip_addr_t swapped_tx;
-    swapped_tx.addr = byte_swap32(ip_addr_tx->addr);
 
     struct netif *n;
+
+    //burayý düzelt, ip_addr_tx unsigned int'i ip_addr_t pointerýna atanmasý lazým
     for (n = netif_list; n != NULL; n = n->next) {
-        if (ip_addr_cmp(&n->ip_addr, &swapped_tx)) {
+        if (ip_addr_cmp(&n->ip_addr, (ip_addr_t *)ip_addr_tx)) {
             break;
         }
     }
@@ -109,9 +98,7 @@ err_t udp_data_send(ip_addr_t *ip_addr_tx, ip_addr_t *ip_addr_rx,
 
     memcpy(p->payload, data, data_len);
 
-    ip_addr_t swapped_rx;
-    swapped_rx.addr = byte_swap32(ip_addr_rx->addr);
-    err_t err = udp_sendto_if(udp_pcb, p, &swapped_rx, port_number, n);
+    err_t err = udp_sendto_if(udp_pcb, p, ip_addr_rx, port_number, n);
 
     pbuf_free(p);
     return err;

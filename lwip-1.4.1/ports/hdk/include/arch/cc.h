@@ -40,7 +40,7 @@ typedef unsigned    int    u32_t;
 typedef signed      int    s32_t;
 typedef u32_t           mem_ptr_t;
 
-#ifdef __little_endian__
+#if defined (__little_endian__) && (__little_endian__ == 1)
 #ifndef BYTE_ORDER
 #define BYTE_ORDER LITTLE_ENDIAN
 #endif

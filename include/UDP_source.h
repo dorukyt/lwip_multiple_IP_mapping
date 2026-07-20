@@ -30,6 +30,6 @@ err_t udp_source_init(u16_t listen_port);
 
 void udp_source_deinit(void);
 
-err_t udp_data_send(ip_addr_t *ip_addr_tx ,ip_addr_t *ip_addr_rx , u16_t port_number , const u8_t *data , u16_t data_len);
+err_t udp_data_send(unsigned int *ip_addr_tx ,ip_addr_t *ip_addr_rx , u16_t port_number , const u8_t *data , u16_t data_len);
 
 #endif /* INCLUDE_UDP_SOURCE_H_ */
