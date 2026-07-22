@@ -156,12 +156,31 @@ void rtiNotification(rtiBASE_t *rtiREG, uint32 notification)
 }
 
 /* USER CODE BEGIN (13) */
+static volatile uint32 button_count = 0;
+static volatile uint32 last_button_read = 0;
+static volatile uint32 timer_val_now = 0;
+static volatile uint32 debounce_treshold = 1406250; //equals to around 150ms delay time
 /* USER CODE END */
 #pragma WEAK(gioNotification)
 void gioNotification(gioPORT_t *port, uint32 bit)
 {
 /*  enter user code between the USER CODE BEGIN and USER CODE END. */
 /* USER CODE BEGIN (22) */
+
+    //check if the interrupt is from GPIOB[5]
+    if ( port == gioPORTB && 5 == bit ){
+
+        //check for debounce, discard if smaller than treshold
+        timer_val_now = rtiREG1->CNT[0].FRCx;
+        if( (timer_val_now - last_button_read) < debounce_treshold ){
+            return;
+        }
+        last_button_read = timer_val_now;
+        button_count++;
+    }
+
+
+
 /* USER CODE END */
 }
 

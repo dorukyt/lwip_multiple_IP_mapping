@@ -103,7 +103,7 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
     uint8_t gateway_sanal[4] = { 11, 0, 0, 1 };
 
     ip_addr_t dest;
-    IP4_ADDR(&dest, 10, 0, 0, 100);
+    IP4_ADDR(&dest, 12, 0, 0, 100);
     const char *main_message = "Hello from 10.0.0.10";
     const char *alias_message = "Hello from 11.0.0.11";
 
@@ -205,7 +205,7 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
     }
     else
     {
-        sciDisplayText(sciREGx, (uint8_t*) "\r\nUDP App init FAILED!", 28);
+        sciDisplayText(sciREGx, (uint8_t*) "\r\nUDP App init FAILED!", 22);
         sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
     }
 
@@ -334,19 +334,35 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
         if (1 == send_main_flag)
         {
             send_main_flag = 0;
-            udp_data_send(h_main, g_main_netif, &dest, 5000,
-                          (const u8_t*) main_message,
-                          (u16_t) strlen(main_message));
+            err_t send_err = udp_data_send(h_main, g_main_netif, &dest, 5000,
+                                           (const u8_t*) main_message,
+                                           (u16_t) strlen(main_message));
+            if (send_err != ERR_OK)
+            {
+                char err_msg[40];
+                int el = snprintf(err_msg, sizeof(err_msg),
+                                  "\r\nUDP send err: %d\r\n", (int) send_err);
+                sciDisplayText(sciREGx, (uint8_t*) err_msg, (uint32_t) el);
+            }
         }
 
         if (1 == send_alias_flag)
         {
             send_alias_flag = 0;
-            udp_data_send(h_alias, g_alias_netif, &dest, 4000,
-                          (const u8_t*) alias_message,
-                          (u16_t) strlen(alias_message));
+            err_t send_err = udp_data_send(h_alias, g_alias_netif, &dest, 4000,
+                                           (const u8_t*) alias_message,
+                                           (u16_t) strlen(alias_message));
+            if (send_err != ERR_OK)
+            {
+                char err_msg[40];
+                int el = snprintf(err_msg, sizeof(err_msg),
+                                  "\r\nUDP send err: %d\r\n", (int) send_err);
+                sciDisplayText(sciREGx, (uint8_t*) err_msg, (uint32_t) el);
+            };
         }
     }
+
+
 }
 
 
