@@ -32,6 +32,7 @@
 
 #include "network_diagnostics.h"
 #include "UDP_source.h"
+#include "terminal_interface.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -359,6 +360,12 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
                                   "\r\nUDP send err: %d\r\n", (int) send_err);
                 sciDisplayText(sciREGx, (uint8_t*) err_msg, (uint32_t) el);
             };
+        }
+
+        if(1 == terminal_input_flag){
+            read_terminal_line(cmd_buf, CMD_BUFFER_SIZE);
+            terminal_input_flag = 0;
+
         }
     }
 

@@ -55,6 +55,7 @@
 #include "HL_epc.h"
 #include "HL_emac.h" 
 #include "HL_sys_dma.h"
+#include "terminal_interface.h"
 
 /* USER CODE BEGIN (0) */
 extern void FonksiyonA(void);
@@ -156,32 +157,34 @@ void rtiNotification(rtiBASE_t *rtiREG, uint32 notification)
 }
 
 /* USER CODE BEGIN (13) */
-static volatile uint32 button_count = 0;
-static volatile uint32 last_button_read = 0;
-static volatile uint32 timer_val_now = 0;
-static volatile uint32 debounce_treshold = 1406250; //equals to around 150ms delay time
+static volatile uint32_t button_count = 0;
+static volatile uint32_t last_button_read = 0;
+static volatile uint32_t timer_val_now = 0;
+static volatile uint32_t debounce_treshold = 1406250; //equals to around 150ms delay time
+extern volatile uint8_t terminal_input_flag = 0;
 /* USER CODE END */
 #pragma WEAK(gioNotification)
 void gioNotification(gioPORT_t *port, uint32 bit)
 {
-/*  enter user code between the USER CODE BEGIN and USER CODE END. */
-/* USER CODE BEGIN (22) */
+    /*  enter user code between the USER CODE BEGIN and USER CODE END. */
+    /* USER CODE BEGIN (22) */
 
     //check if the interrupt is from GPIOB[5]
-    if ( port == gioPORTB && 5 == bit ){
+    if (port == gioPORTB && 5 == bit)
+    {
 
         //check for debounce, discard if smaller than treshold
         timer_val_now = rtiREG1->CNT[0].FRCx;
-        if( (timer_val_now - last_button_read) < debounce_treshold ){
+        if ((timer_val_now - last_button_read) < debounce_treshold)
+        {
             return;
         }
+        terminal_input_flag = 1;
         last_button_read = timer_val_now;
         button_count++;
     }
 
-
-
-/* USER CODE END */
+    /* USER CODE END */
 }
 
 /* USER CODE BEGIN (23) */
