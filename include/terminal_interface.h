@@ -15,6 +15,8 @@
 extern volatile uint8_t terminal_input_flag;
 extern uint8_t cmd_buf[CMD_BUFFER_SIZE];
 
-void read_terminal_line(uint8_t *buf, uint32_t max_len);
+void read_terminal_line(void);
+
+void fetch_input(uint8_t *buf, uint32_t max_len);
 
 #endif /* INCLUDE_TERMINAL_INTERFACE_H_ */

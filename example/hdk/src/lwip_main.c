@@ -363,7 +363,7 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
         }
 
         if(1 == terminal_input_flag){
-            read_terminal_line(cmd_buf, CMD_BUFFER_SIZE);
+            read_terminal_line();
             terminal_input_flag = 0;
 
         }
