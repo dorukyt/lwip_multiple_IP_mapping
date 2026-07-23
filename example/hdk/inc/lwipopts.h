@@ -121,7 +121,7 @@
 /* LwIP IP Aliasing (Multiple Netif on Single MAC) Hook */
 #define LWIP_ARP_FILTER_NETIF 1
 
-/* Fonksiyonun prototipini derleyiciye bildiriyoruz */
+/* Multiple IP Filter Function */
 struct pbuf;
 struct netif;
 extern struct netif* netif_alias_route_filter(struct pbuf *p, struct netif *def_netif, unsigned short type);

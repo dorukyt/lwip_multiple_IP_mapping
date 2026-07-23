@@ -32,6 +32,7 @@
 
 #include "network_diagnostics.h"
 #include "UDP_source.h"
+#include "terminal_interface.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -94,20 +95,21 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
      * ip_ana : cihazin birincil (default route'un ciktigi) adresi
      * ip_sanal: ayni fiziksel EMAC + ayni MAC uzerinde ikinci (alias) IP
      */
-    uint8_t ip_ana[4]      = { 192, 168, 2, 44  };
+    uint8_t ip_ana[4]      = { 10, 0, 0, 10  };
     uint8_t netmask_ana[4] = { 255, 255, 255, 0 };
-    uint8_t gateway_ana[4] = { 192, 168, 2, 254 };
+    uint8_t gateway_ana[4] = { 10, 0, 0, 1 };
 
-    uint8_t ip_sanal[4]      = { 192, 168, 2, 50 };
+    uint8_t ip_sanal[4]      = { 11, 0, 0, 11 };
     uint8_t netmask_sanal[4] = { 255, 255, 255, 0 };
+    uint8_t gateway_sanal[4] = { 11, 0, 0, 1 };
 
+    //TODO:
+    //Create a linked list design for destination IP addresses to be later used for
+    //selecting, adding, deleting and changing the dest addresses
     ip_addr_t dest;
-    ip_addr_t main_ip, alias_ip;
-    IP4_ADDR(&dest, 192, 168, 2, 100);
-    IP4_ADDR(&main_ip, 192, 168, 2, 44);
-    IP4_ADDR(&alias_ip, 192, 168, 2, 50);
-    const char *main_message = "Hello from 192.168.2.44";
-    const char *alias_message = "Hello from 192.168.2.50";
+    IP4_ADDR(&dest, 12, 0, 0, 100);
+    const char *main_message = "Hello from 10.0.0.10";
+    const char *alias_message = "Hello from 11.0.0.11";
 
 	sciInit();
 
@@ -160,13 +162,16 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 	sanalIpAddr = lwIPAliasAdd(0,
 		*((uint32_t *)ip_sanal),
 		*((uint32_t *)netmask_sanal),
-		*((uint32_t *)gateway_ana));
+		*((uint32_t *)gateway_sanal));
 
 	if (0 == sanalIpAddr)
 	{
 		sciDisplayText(sciREGx, (uint8_t*)"UYARI: Sanal IP eklenemedi, ana IP ile devam ediliyor", 54);
 		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 	}
+
+	struct netif *g_main_netif  = lwIPNetifPtrGet(0);
+	struct netif *g_alias_netif = lwIPAliasNetifPtrGet(0);
 
 	sciDisplayText(sciREGx, (uint8_t*)"..DONE", sizeof("..DONE"));
 	sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
@@ -187,18 +192,47 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 	sciDisplayText(sciREGx, (uint8_t*)"..DONE", sizeof("..DONE"));
 	sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
-	/* Loop forever.  All the work is done in interrupt handlers. */
+	u8_t h_main;
+	u8_t h_alias;
 
-	/* 4) UDP uygulama modulu: hem ana (192.168.2.44) hem alias (192.168.2.50)
-	 *    IP uzerinden port 5000'i dinle.
-	 *    IP_ADDR_ANY'ye bind edildigi icin tek PCB her iki IP'yi de yakalar. */
-	if (udp_source_init(5000) == ERR_OK) {
-		sciDisplayText(sciREGx, (uint8_t*)"\r\nUDP Source init OK (port 5000)", 32);
-		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-	} else {
-		sciDisplayText(sciREGx, (uint8_t*)"\r\nUDP App init FAILED!", 22);
-		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-	}
+	if (udp_source_add_listener(&g_main_netif->ip_addr, 5000, &h_main) == ERR_OK)
+    {
+        char ip_str[16];
+        ipaddr_ntoa_r(&g_main_netif->ip_addr, ip_str, sizeof(ip_str));
+
+        char msg[64];
+        int msg_len = snprintf(msg, sizeof(msg),
+                               "\r\nUDP Source '%s' init OK (port 5000)",
+                               ip_str);
+        sciDisplayText(sciREGx, (uint8_t*) msg, (uint32_t) msg_len);
+        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    }
+    else
+    {
+        sciDisplayText(sciREGx, (uint8_t*) "\r\nUDP App init FAILED!", 22);
+        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    }
+
+    if (udp_source_add_listener(&g_alias_netif->ip_addr, 5000, &h_alias) == ERR_OK)
+    {
+        char ip_str[16];
+        ipaddr_ntoa_r(&g_alias_netif->ip_addr, ip_str, sizeof(ip_str));
+
+        char msg[64];
+        int msg_len = snprintf(msg, sizeof(msg),
+                               "\r\nUDP Source '%s' init OK (port 5000)",
+                               ip_str);
+        sciDisplayText(sciREGx, (uint8_t*) msg, (uint32_t) msg_len);
+        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    }
+    else
+    {
+        sciDisplayText(sciREGx, (uint8_t*) "\r\nUDP App Alias init FAILED!", 28);
+        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    }
+
+
+
 
     sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
@@ -216,33 +250,17 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 
 
 #endif
-    /*
-     sciDisplayText(sciREGx, txtIPAddrTxt, sizeof(txtIPAddrTxt));
-     sciDisplayText(sciREGx, txtIPAddrItoA, 16);
-     sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-
-     if (sanalIpAddr != 0)
-     {
-     sciDisplayText(sciREGx, txtIPAddrTxt2, sizeof(txtIPAddrTxt2));
-     sciDisplayText(sciREGx, txtIPAddrItoA2, 16);
-     sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-     }
-
-     sciDisplayText(sciREGx, txtNote1, sizeof(txtNote1));
-     sciDisplayText(sciREGx, txtIPAddrItoA, 16);
-     sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-     */
 
     temp_ip.addr = anaIpAddr;
     ipaddr_ntoa_r(&temp_ip, str_anaIp, sizeof(str_anaIp));
-    txtIPAddrItoA = (uint8_t*) str_anaIp; // Terminale basılacak pointer'ı ayarla
+    txtIPAddrItoA = (uint8_t*) str_anaIp; // Terminale basilacak pointer'i ayarla
 
     if (sanalIpAddr != 0)
     {
-        // Sanal IP'yi text'e çevir ve bizim str_sanalIp dizimize yaz
+        // Sanal IP'yi text'e cevir ve bizim str_sanalIp dizimize yaz
         temp_ip.addr = sanalIpAddr;
         ipaddr_ntoa_r(&temp_ip, str_sanalIp, sizeof(str_sanalIp));
-        txtIPAddrItoA2 = (uint8_t*) str_sanalIp; // İkinci pointer'ı ayarla
+        txtIPAddrItoA2 = (uint8_t*) str_sanalIp; // Ikinci pointer'i ayarla
     }
 
     sciDisplayText(sciREGx, txtIPAddrTxt, sizeof(txtIPAddrTxt));
@@ -258,123 +276,103 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
     sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
 
-
-	while(1)
-	{
-
-#if 0
-
-		/* Before printing the next set, wait for a character on the terminal */
-		sciReceive(sciREGx, 1, &testChar);
-
-        uint8_t rx_byte = 0; // rx_byte sıfırlanmalıdır ki önceki karakteri hatırlamasın
-
-        /* Terminalden bir karakter bekle */
-        sciReceive(sciREGx, 1, &rx_byte);
-
-
-        /* ============================================================
-         *  TEST KOMUTLARI
-         *
-         *  'p'  Tek ping testi (ayarlanabilir hedef IP/MAC)
-         *  'd'  4 senaryolu tam diagnostik suiti
-         *  't'  Elle parametreli ozel test
-         * ============================================================ */
-
-        if (rx_byte == 'p')
-        {
-            /* ---- Tek ping testi ----
-             * Hedef IP/MAC'i degistirmek icin network_diagnostics.c
-             * icindeki inject_fake_ping_packet() fonksiyonunun basindaki
-             * USE_BOARD_IP / USE_BOARD_MAC / hedef_ip / hedef_mac
-             * degerlerini degistirin. */
-            inject_fake_ping_packet();
-        }
-        else if (rx_byte == 'd')
-        {
-            /* ---- Tam diagnostik suiti (4 test) ----
-             * Test1: Dogru MAC + Ana IP
-             * Test2: Dogru MAC + Yanlis IP
-             * Test3: Yanlis MAC + Dogru IP
-             * Test4: Dogru MAC + Alias IP  */
-            run_ping_diagnostics();
-        }
-
-        else if (rx_byte == 't')
-        {
-
-            /* ---- Elle parametreli ozel test ----
-             * Istediginiz IP ve MAC kombinasyonunu asagida degistirin. */
-            ping_test_params_t test;
-            int arp_sonuc, icmp_sonuc;
-
-            /* Hedef MAC — kartin kendi MAC'i */
-            test.dst_mac[0]=0x00; test.dst_mac[1]=0x08; test.dst_mac[2]=0xEE;
-            test.dst_mac[3]=0x03; test.dst_mac[4]=0xA6; test.dst_mac[5]=0x6C;
-
-            /* Kaynak MAC — sahte PC */
-            test.src_mac[0]=0x11; test.src_mac[1]=0x22; test.src_mac[2]=0x33;
-            test.src_mac[3]=0x44; test.src_mac[4]=0x55; test.src_mac[5]=0x66;
-
-            /* Kaynak IP — sahte PC */
-            test.src_ip[0]=192; test.src_ip[1]=168;
-            test.src_ip[2]=2;   test.src_ip[3]=100;
-
-            /* Hedef IP — TEST ETMEK ISTEDIGINIZ IP'YI BURAYA YAZIN */
-            test.dst_ip[0]=192; test.dst_ip[1]=168;
-            test.dst_ip[2]=2;   test.dst_ip[3]=50;    /*  alias IP */
-
-            inject_realistic_ping_test(&test, netif_default, &arp_sonuc, &icmp_sonuc);
-
-            sciDisplayText(sciREGx, (uint8_t*)"\r\nARP:  ", 7);
-            if (arp_sonuc == 1)  sciDisplayText(sciREGx, (uint8_t*)"EVET\r\n", 6);
-            else                 sciDisplayText(sciREGx, (uint8_t*)"HAYIR\r\n", 7);
-
-
-            sciDisplayText(sciREGx, (uint8_t*)"ICMP: ", 6);
-            if (icmp_sonuc == 1) sciDisplayText(sciREGx, (uint8_t*)"EVET\r\n", 6);
-            else                 sciDisplayText(sciREGx, (uint8_t*)"HAYIR\r\n", 7);
-
-        }
-
-#endif
-
+    /* Loop forever.  All the work is done in interrupt handlers. */
+    while (1)
+    {
 
         /* UDP RX poll --- ISR'dan gelen paket varsa UART'a yazdir */
-                {
-                    udp_rx_msg_t rx;
-                    if (udp_source_poll_rx(&rx)) {
-                        char rx_info[80];
-                        int n = snprintf(rx_info, sizeof(rx_info),
-                            "\r\nUDP RX: %u bytes from %s:%u\r\n",
-                            (unsigned)rx.data_len,
-                            ipaddr_ntoa(&rx.src_ip),
-                            (unsigned)rx.src_port);
-                        sciDisplayText(sciREGx, (uint8_t*)rx_info, (uint32_t)n);
-                        /* Gelen veriyi de yazdir (en fazla 64 byte) */
-                        if (rx.data_len > 0) {
-                            u16_t print_len = rx.data_len;
-                            if (print_len > 64) print_len = 64;
-                            sciDisplayText(sciREGx, (uint8_t*)"Data: ", 6);
-                            sciDisplayText(sciREGx, rx.data, (uint32_t)print_len);
-                            sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-                        }
-                    }
-                }
+        {
+            udp_rx_msg_t rx_0;
+            if (udp_source_poll_rx(h_main, &rx_0))
+            {
+                char my_ip_str[16];
+                ipaddr_ntoa_r(&g_main_netif->ip_addr, my_ip_str, sizeof(my_ip_str));
 
-                if (1 == send_main_flag)
-                {
-                    send_main_flag = 0;
-                    udp_data_send(&main_ip, &dest, 5000, (const u8_t *)main_message, (u16_t)strlen(main_message));
-                }
-                if (1 == send_alias_flag)
-                {
-                    send_alias_flag = 0;
-                    udp_data_send(&alias_ip, &dest, 5000, (const u8_t *)alias_message, (u16_t)strlen(alias_message));
-                }
+                char rx0_info[112];
+                int n = snprintf(rx0_info, sizeof(rx0_info),
+                                 "\r\nUDP RX: %u bytes, %s:%u -> %s:%u\r\n",
+                                 (unsigned) rx_0.data_len,
+                                 ipaddr_ntoa(&rx_0.src_ip), (unsigned) rx_0.src_port,
+                                 my_ip_str, (unsigned) udp_source_get_local_port(h_main));
+                sciDisplayText(sciREGx, (uint8_t*) rx0_info, (uint32_t) n);
 
+                if (rx_0.data_len > 0)
+                {
+                    u16_t print_len = rx_0.data_len;
+                    if (print_len > 64)
+                        print_len = 64;
+                    sciDisplayText(sciREGx, (uint8_t*) "Data: ", 6);
+                    sciDisplayText(sciREGx, rx_0.data, (uint32_t) print_len);
+                    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+                }
+            }
+        }
 
+        {
+            udp_rx_msg_t rx_1;
+            if (udp_source_poll_rx(h_alias, &rx_1))
+            {
+                char my_ip_str[16];
+                ipaddr_ntoa_r(&g_alias_netif->ip_addr, my_ip_str, sizeof(my_ip_str));
+
+                char rx1_info[112];
+                int n = snprintf(rx1_info, sizeof(rx1_info),
+                                 "\r\nUDP RX: %u bytes, %s:%u -> %s:%u\r\n",
+                                 (unsigned) rx_1.data_len,
+                                 ipaddr_ntoa(&rx_1.src_ip), (unsigned) rx_1.src_port,
+                                 my_ip_str, (unsigned) udp_source_get_local_port(h_alias));
+                sciDisplayText(sciREGx, (uint8_t*) rx1_info, (uint32_t) n);
+
+                if (rx_1.data_len > 0)
+                {
+                    u16_t print_len = rx_1.data_len;
+                    if (print_len > 64)
+                        print_len = 64;
+                    sciDisplayText(sciREGx, (uint8_t*) "Data: ", 6);
+                    sciDisplayText(sciREGx, rx_1.data, (uint32_t) print_len);
+                    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+                }
+            }
+        }
+
+        if (1 == send_main_flag)
+        {
+            send_main_flag = 0;
+            err_t send_err = udp_data_send(h_main, g_main_netif, &dest, 5000,
+                                           (const u8_t*) main_message,
+                                           (u16_t) strlen(main_message));
+            if (send_err != ERR_OK)
+            {
+                char err_msg[40];
+                int el = snprintf(err_msg, sizeof(err_msg),
+                                  "\r\nUDP send err: %d\r\n", (int) send_err);
+                sciDisplayText(sciREGx, (uint8_t*) err_msg, (uint32_t) el);
+            }
+        }
+
+        if (1 == send_alias_flag)
+        {
+            send_alias_flag = 0;
+            err_t send_err = udp_data_send(h_alias, g_alias_netif, &dest, 4000,
+                                           (const u8_t*) alias_message,
+                                           (u16_t) strlen(alias_message));
+            if (send_err != ERR_OK)
+            {
+                char err_msg[40];
+                int el = snprintf(err_msg, sizeof(err_msg),
+                                  "\r\nUDP send err: %d\r\n", (int) send_err);
+                sciDisplayText(sciREGx, (uint8_t*) err_msg, (uint32_t) el);
+            };
+        }
+
+        if(1 == terminal_input_flag){
+            read_terminal_line();
+            terminal_input_flag = 0;
+
+        }
     }
+
+
 }
 
 
@@ -488,3 +486,82 @@ void sciNotification(sciBASE_t *sci, uint32_t flags)
 {
 	return;
 }
+
+
+//Test functions to test the IP aliasing feature without connecting the ethernet port
+#if 0
+
+        /* Before printing the next set, wait for a character on the terminal */
+        sciReceive(sciREGx, 1, &testChar);
+
+        uint8_t rx_byte = 0; // rx_byte sıfırlanmalıdır ki önceki karakteri hatırlamasın
+
+        /* Terminalden bir karakter bekle */
+        sciReceive(sciREGx, 1, &rx_byte);
+
+
+        /* ============================================================
+         *  TEST KOMUTLARI
+         *
+         *  'p'  Tek ping testi (ayarlanabilir hedef IP/MAC)
+         *  'd'  4 senaryolu tam diagnostik suiti
+         *  't'  Elle parametreli ozel test
+         * ============================================================ */
+
+        if (rx_byte == 'p')
+        {
+            /* ---- Tek ping testi ----
+             * Hedef IP/MAC'i degistirmek icin network_diagnostics.c
+             * icindeki inject_fake_ping_packet() fonksiyonunun basindaki
+             * USE_BOARD_IP / USE_BOARD_MAC / hedef_ip / hedef_mac
+             * degerlerini degistirin. */
+            inject_fake_ping_packet();
+        }
+        else if (rx_byte == 'd')
+        {
+            /* ---- Tam diagnostik suiti (4 test) ----
+             * Test1: Dogru MAC + Ana IP
+             * Test2: Dogru MAC + Yanlis IP
+             * Test3: Yanlis MAC + Dogru IP
+             * Test4: Dogru MAC + Alias IP  */
+            run_ping_diagnostics();
+        }
+
+        else if (rx_byte == 't')
+        {
+
+            /* ---- Elle parametreli ozel test ----
+             * Istediginiz IP ve MAC kombinasyonunu asagida degistirin. */
+            ping_test_params_t test;
+            int arp_sonuc, icmp_sonuc;
+
+            /* Hedef MAC — kartin kendi MAC'i */
+            test.dst_mac[0]=0x00; test.dst_mac[1]=0x08; test.dst_mac[2]=0xEE;
+            test.dst_mac[3]=0x03; test.dst_mac[4]=0xA6; test.dst_mac[5]=0x6C;
+
+            /* Kaynak MAC — sahte PC */
+            test.src_mac[0]=0x11; test.src_mac[1]=0x22; test.src_mac[2]=0x33;
+            test.src_mac[3]=0x44; test.src_mac[4]=0x55; test.src_mac[5]=0x66;
+
+            /* Kaynak IP — sahte PC */
+            test.src_ip[0]=192; test.src_ip[1]=168;
+            test.src_ip[2]=2;   test.src_ip[3]=100;
+
+            /* Hedef IP — TEST ETMEK ISTEDIGINIZ IP'YI BURAYA YAZIN */
+            test.dst_ip[0]=192; test.dst_ip[1]=168;
+            test.dst_ip[2]=2;   test.dst_ip[3]=50;    /*  alias IP */
+
+            inject_realistic_ping_test(&test, netif_default, &arp_sonuc, &icmp_sonuc);
+
+            sciDisplayText(sciREGx, (uint8_t*)"\r\nARP:  ", 7);
+            if (arp_sonuc == 1)  sciDisplayText(sciREGx, (uint8_t*)"EVET\r\n", 6);
+            else                 sciDisplayText(sciREGx, (uint8_t*)"HAYIR\r\n", 7);
+
+
+            sciDisplayText(sciREGx, (uint8_t*)"ICMP: ", 6);
+            if (icmp_sonuc == 1) sciDisplayText(sciREGx, (uint8_t*)"EVET\r\n", 6);
+            else                 sciDisplayText(sciREGx, (uint8_t*)"HAYIR\r\n", 7);
+
+        }
+
+#endif

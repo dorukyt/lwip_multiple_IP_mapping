@@ -12,76 +12,102 @@
 #include "UDP_source.h"
 
 #include <string.h>
-
-static struct udp_pcb *udp_pcb = NULL;
+#include <stdint.h>
 
 static volatile udp_rx_msg_t s_rx_msg;
 
-static volatile u32_t s_rx_count = 0;
-static volatile u32_t s_rx_drop_count = 0;
+static udp_listener_t s_listeners[UDP_MAX_LISTENERS];
 
 static void udp_rx_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
                             ip_addr_t *addr, u16_t port);
 
-static u32_t byte_swap32(u32_t v)
+//adds a listening port for the designated IP and Port number
+//@arg local_ip: chose the netif with the IP user want to use to send data
+//@arg local_port: chose which port number to send the data from
+//@arg handle_out: returns the index number for the s_listeners[handle] list
+//                 later can be used as udp_source_remove_listener(&handle)
+//                 and udp_source_poll_rx(handle, &msg)
+//@return err_t: returns the error code of the operation
+err_t udp_source_add_listener(ip_addr_t *local_ip, u16_t local_port,
+                              u8_t *handle_out)
 {
-    return ((v & 0x000000FFUL) << 24) |
-           ((v & 0x0000FF00UL) << 8)  |
-           ((v & 0x00FF0000UL) >> 8)  |
-           ((v & 0xFF000000UL) >> 24);
+
+    u8_t idx;
+    err_t err;
+    struct udp_pcb *new_pcb;
+
+    //check if users input has null pointers
+    if (local_ip == NULL || handle_out == NULL)
+    {
+        return ERR_VAL;
+    }
+
+    //scan for empty pcb slots, return err if there is none
+    for (idx = 0; idx < UDP_MAX_LISTENERS; idx++)
+    {
+        if (s_listeners[idx].in_use == 0)
+        {
+
+            new_pcb = udp_new();
+            if (new_pcb == NULL)
+            {
+                return ERR_MEM;
+            }
+
+            //create a new pcb in empty spot
+            err = udp_bind(new_pcb, local_ip, local_port);
+            if (err != ERR_OK)
+            {
+                udp_remove(new_pcb);
+                new_pcb = NULL;
+                return err;
+            }
+
+            //place the new pcb to receive the data
+            udp_recv(new_pcb, udp_rx_callback, (void*) (uintptr_t) idx);
+            s_listeners[idx].pcb = new_pcb;
+            s_listeners[idx].in_use = 1;
+            s_listeners[idx].rx_count = 0;
+            s_listeners[idx].rx_drop_count = 0;
+            s_listeners[idx].rx_msg.valid = 0;
+            *handle_out = idx;
+
+            return ERR_OK;
+
+        }
+    }
+    return ERR_MEM;
 }
 
 
-err_t udp_source_init(u16_t listen_port){
-
-    if(udp_pcb != NULL){
-        udp_remove(udp_pcb);
-        udp_pcb = NULL;
-    }
-
-    udp_pcb = udp_new();
-
-    if ( NULL == udp_pcb){
-        return ERR_MEM;
-    }
-
-    err_t err = udp_bind(udp_pcb, IP_ADDR_ANY, listen_port);
-
-    if(err != ERR_OK) {
-        udp_remove(udp_pcb);
-        udp_pcb = NULL;
-        return err;
-    }
-
-    udp_recv(udp_pcb, udp_rx_callback, NULL);
-    return ERR_OK;
-
-}
-
-void udp_source_deinit(void){
-
+void udp_source_remove_listener(u8_t handle)
+{
     SYS_ARCH_DECL_PROTECT(lev);
-
-    if(NULL != udp_pcb){
-        udp_remove(udp_pcb);
-        udp_pcb = NULL;
+    if (!(handle < UDP_MAX_LISTENERS && s_listeners[handle].in_use == 1))
+    {
+        return;
     }
+
     SYS_ARCH_PROTECT(lev);
-    s_rx_msg.valid = 0;
+    if (NULL != s_listeners[handle].pcb)
+    {
+        udp_remove(s_listeners[handle].pcb);
+        s_listeners[handle].pcb = NULL;
+        s_listeners[handle].in_use = 0;
+    }
+    s_listeners[handle].rx_msg.valid = 0;
     SYS_ARCH_UNPROTECT(lev);
 }
 
-err_t udp_data_send(ip_addr_t *ip_addr_tx, ip_addr_t *ip_addr_rx,
+
+//sends the prepared data to the designated IP address and Port
+//also expects the sender IP to comply with IP aliasing
+err_t udp_data_send(u8_t handle, struct netif *tx_netif, ip_addr_t *ip_addr_rx,
                     u16_t port_number, const u8_t *data, u16_t data_len)
 {
 
-    /* TODO: GECICI COZUM — BYTE_ORDER derleme ayari (little-endian) ile
-     * kartin gercek calisma modu (big-endian) arasindaki uyumsuzluk yuzunden
-     * ip_addr_tx ve n->ip_addr byte-ters. Kok neden lwiplib.c'deki
-     * lwIPNetifAdd/lwIPAliasAdd + BYTE_ORDER config'inde; duzeltilince bu
-     * swap kaldirilmali. */
-
-    if (NULL == udp_pcb || NULL == data || 0 == data_len)
+    if (NULL == tx_netif || NULL == data || 0 == data_len
+            || !(handle < UDP_MAX_LISTENERS && s_listeners[handle].in_use == 1))
     {
         return ERR_VAL;
     }
@@ -93,101 +119,89 @@ err_t udp_data_send(ip_addr_t *ip_addr_tx, ip_addr_t *ip_addr_rx,
         return ERR_MEM;
     }
 
-    //compare ip_addr_tx with netif_list->ip_addr to find the correct netif
-    //ip_addr_tx swapped because of little endian order (n->ip_addr has big endian order)
-
-    ip_addr_t swapped_tx;
-    swapped_tx.addr = byte_swap32(ip_addr_tx->addr);
-
-    struct netif *n;
-    for (n = netif_list; n != NULL; n = n->next) {
-        if (ip_addr_cmp(&n->ip_addr, &swapped_tx)) {
-            break;
-        }
-    }
-    if( NULL == n ){ pbuf_free(p); return ERR_VAL; }
-
     memcpy(p->payload, data, data_len);
 
-    ip_addr_t swapped_rx;
-    swapped_rx.addr = byte_swap32(ip_addr_rx->addr);
-    err_t err = udp_sendto_if(udp_pcb, p, &swapped_rx, port_number, n);
+    err_t err = udp_sendto_if(s_listeners[handle].pcb, p, ip_addr_rx, port_number, tx_netif);
 
     pbuf_free(p);
     return err;
 
 }
 
-
-u8_t udp_source_poll_rx(udp_rx_msg_t *msg){
+//main loop has to call this function to fetch the data that is stored in the message box
+//that had a data from the EMAC driver
+u8_t udp_source_poll_rx(u8_t handle, udp_rx_msg_t *msg){
 
     //1 if reading succesfull, 0 if there is no data to read or unsuccesfull
     u8_t read_stat = 0;
 
     SYS_ARCH_DECL_PROTECT(lev);
 
-    if(NULL == msg){
+    //check if there is a message and we have a pcb to store it
+    if(NULL == msg || !(handle < UDP_MAX_LISTENERS && s_listeners[handle].in_use == 1)){
         return 0;
     }
 
+    //stop interrupts to to prevent reading and writing at the same time to the message box
     SYS_ARCH_PROTECT(lev);
 
-    if(s_rx_msg.valid == 0){
+    if(s_listeners[handle].rx_msg.valid == 0){
         read_stat = 0;
     }
 
     //valid==1,  there is data to read
     else{
-        *msg = *(udp_rx_msg_t *)&s_rx_msg;
-        s_rx_msg.valid = 0;
+        *msg = *(udp_rx_msg_t *)&s_listeners[handle].rx_msg;
+        s_listeners[handle].rx_msg.valid = 0;
         read_stat = 1;
-        s_rx_count++;
+        s_listeners[handle].rx_count++;
     }
     SYS_ARCH_UNPROTECT(lev);
     return read_stat;
 }
 
-
+//copies the data EMAC driver gives into a udp_pcb
+//we have to pull this data later to process it otherwise the data box stays full
+//if the data is not emptied, consecutive packets gets dropped
 static void udp_rx_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
                             ip_addr_t *addr, u16_t port)
 {
+    u8_t idx = (u8_t)(uintptr_t)arg;
+    if( !(idx < UDP_MAX_LISTENERS && s_listeners[idx].in_use == 1)){
+        return;
+    }
+
+
     if(NULL == p) return;
 
-    if (1 == s_rx_msg.valid)
+    if (1 == s_listeners[idx].rx_msg.valid)
     {
-        s_rx_drop_count++;
+        s_listeners[idx].rx_drop_count++;
     }
     else
     {
-        ip_addr_set(&s_rx_msg.src_ip, addr);
+        ip_addr_set(&s_listeners[idx].rx_msg.src_ip, addr);
 
-        s_rx_msg.src_port = port;
+        s_listeners[idx].rx_msg.src_port = port;
 
         u16_t copy_len = p->tot_len;
         if (copy_len > UDP_RX_BUF_SIZE)
         {
             copy_len = UDP_RX_BUF_SIZE;
         }
-        s_rx_msg.data_len = copy_len;
-        pbuf_copy_partial(p, (void *)s_rx_msg.data, s_rx_msg.data_len, 0);
-        s_rx_msg.valid = 1;
+        s_listeners[idx].rx_msg.data_len = copy_len;
+        pbuf_copy_partial(p, (void *)s_listeners[idx].rx_msg.data, s_listeners[idx].rx_msg.data_len, 0);
+        s_listeners[idx].rx_msg.valid = 1;
     }
 
     pbuf_free(p);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+u16_t udp_source_get_local_port(u8_t handle)
+{
+    if (!(handle < UDP_MAX_LISTENERS && s_listeners[handle].in_use == 1))
+    {
+        return 0;
+    }
+    return s_listeners[handle].pcb->local_port;
+}

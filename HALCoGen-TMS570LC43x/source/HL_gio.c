@@ -158,7 +158,7 @@ void gioInit(void)
                    | (uint32)((uint32)0U << 2U)  /* Bit 2 */
                    | (uint32)((uint32)0U << 3U)  /* Bit 3 */
                    | (uint32)((uint32)0U << 4U)  /* Bit 4 */
-                   | (uint32)((uint32)0U << 5U)  /* Bit 5 */
+                   | (uint32)((uint32)1U << 5U)  /* Bit 5 */
                    | (uint32)((uint32)0U << 6U)  /* Bit 6 */
                    | (uint32)((uint32)0U << 7U); /* Bit 7 */
 
@@ -234,7 +234,7 @@ void gioInit(void)
                    | (uint32)((uint32)0U << 10U)  /* Bit 10 */
                    | (uint32)((uint32)0U << 11U)  /* Bit 11 */
                    | (uint32)((uint32)0U << 12U)  /* Bit 12 */
-                   | (uint32)((uint32)0U << 13U)  /* Bit 13 */
+                   | (uint32)((uint32)1U << 13U)  /* Bit 13 */
                    | (uint32)((uint32)0U << 14U)  /* Bit 14 */
                    | (uint32)((uint32)0U << 15U); /* Bit 15 */
 
@@ -512,6 +512,46 @@ void gioGetConfigValue(gio_config_reg_t *config_reg, config_value_type_t type)
     }
 }
 
+
+/* USER CODE BEGIN (16) */
+/* USER CODE END */
+
+/** @fn void gioLowLevelInterrupt(void)
+*   @brief GIO Interrupt Handler
+*
+*   Low Level Interrupt handler for GIO pin interrupt 
+*
+*/
+#pragma CODE_STATE(gioLowLevelInterrupt, 32)
+#pragma INTERRUPT(gioLowLevelInterrupt, IRQ)
+
+/* SourceId : GIO_SourceId_012 */
+/* DesignId : GIO_DesignId_011 */
+/* Requirements : HL_CONQ_GIO_SR13 */
+void gioLowLevelInterrupt(void)
+{
+    uint32 offset = gioREG->OFF2;
+
+/* USER CODE BEGIN (17) */
+/* USER CODE END */
+
+    if (offset != 0U)
+    {
+        offset = offset - 1U;
+        if (offset >= 8U)
+        {
+            gioNotification(gioPORTB, offset - 8U);
+        }
+        else
+        {
+            gioNotification(gioPORTA, offset);
+        }
+    }
+
+/* USER CODE BEGIN (18) */
+/* USER CODE END */
+
+}
 
 
 /* USER CODE BEGIN (19) */
