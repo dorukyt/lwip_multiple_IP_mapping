@@ -22,6 +22,12 @@ static void udp_rx_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
                             ip_addr_t *addr, u16_t port);
 
 //adds a listening port for the designated IP and Port number
+//@arg local_ip: chose the netif with the IP user want to use to send data
+//@arg local_port: chose which port number to send the data from
+//@arg handle_out: returns the index number for the s_listeners[handle] list
+//                 later can be used as udp_source_remove_listener(&handle)
+//                 and udp_source_poll_rx(handle, &msg)
+//@return err_t: returns the error code of the operation
 err_t udp_source_add_listener(ip_addr_t *local_ip, u16_t local_port,
                               u8_t *handle_out)
 {

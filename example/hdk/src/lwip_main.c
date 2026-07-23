@@ -103,6 +103,9 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
     uint8_t netmask_sanal[4] = { 255, 255, 255, 0 };
     uint8_t gateway_sanal[4] = { 11, 0, 0, 1 };
 
+    //TODO:
+    //Create a linked list design for destination IP addresses to be later used for
+    //selecting, adding, deleting and changing the dest addresses
     ip_addr_t dest;
     IP4_ADDR(&dest, 12, 0, 0, 100);
     const char *main_message = "Hello from 10.0.0.10";

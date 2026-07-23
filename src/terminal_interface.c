@@ -80,9 +80,7 @@ void read_terminal_line(void)
             sciSendByte(sciREGx, '\r');
             i++;
         }
-        /*
-         //TODO: Continue from here, add a feature to be able to select which IP adress then change it
-         */
+
         n = netif_list;
         sciReceive(sciREGx, 1, &ch);
         idx = (uint32_t)(ch - '0');
@@ -101,12 +99,87 @@ void read_terminal_line(void)
     }
 
     case '2':
+    {
         // code block
+        const char Msg[] = "Please chose which GW address you want to change:";
+        sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+        sciSendByte(sciREGx, '\r');
+        sciSendByte(sciREGx, '\n');
+
+        uint8_t i = 1;
+        int len;
+        struct netif *n;
+        char ip_str[16];
+        char line[48];
+        ip_addr_t new_gw;
+
+        for (n = netif_list; n != NULL; n = n->next)
+        {
+            ipaddr_ntoa_r(&n->gw, ip_str, sizeof(ip_str));
+            len = sprintf(line, "%d.GW adress: %s\r\n", i, ip_str);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+            sciSendByte(sciREGx, '\r');
+            i++;
+        }
+
+        n = netif_list;
+        sciReceive(sciREGx, 1, &ch);
+        idx = (uint32_t)(ch - '0');
+        idx--;
+        while(n != NULL && idx-- > 0){
+            n = n->next;
+        }
+        ipaddr_ntoa_r(&n->gw, ip_str, sizeof(ip_str));
+        len = snprintf(line, sizeof(line), "Change %c.GW address(%s) to:", ch, ip_str);
+        sciSend(sciREGx, (uint32_t)len, (uint8_t *)line);
+        fetch_input(cmd_buf, CMD_BUFFER_SIZE);
+        if(ipaddr_aton((const char *)cmd_buf, &new_gw)){
+         netif_set_gw(n, &new_gw);
+        }
         break;
+    }
 
     case '3':
+    {
+        //TODO: Change this block of code to dest Ip address configurator
         // code block
+        const char Msg[] = "Please chose which dest IP address you want to change:";
+        sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+        sciSendByte(sciREGx, '\r');
+        sciSendByte(sciREGx, '\n');
+
+        uint8_t i = 1;
+        int len;
+        struct netif *n;
+        char ip_str[16];
+        char line[48];
+        ip_addr_t new_gw;
+
+        for (n = netif_list; n != NULL; n = n->next)
+        {
+            ipaddr_ntoa_r(&n->gw, ip_str, sizeof(ip_str));
+            len = sprintf(line, "%d.GW adress: %s\r\n", i, ip_str);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+            sciSendByte(sciREGx, '\r');
+            i++;
+        }
+
+        n = netif_list;
+        sciReceive(sciREGx, 1, &ch);
+        idx = (uint32_t)(ch - '0');
+        idx--;
+        while(n != NULL && idx-- > 0){
+            n = n->next;
+        }
+        ipaddr_ntoa_r(&n->gw, ip_str, sizeof(ip_str));
+        len = snprintf(line, sizeof(line), "Change %c.GW address(%s) to:", ch, ip_str);
+        sciSend(sciREGx, (uint32_t)len, (uint8_t *)line);
+        fetch_input(cmd_buf, CMD_BUFFER_SIZE);
+        if(ipaddr_aton((const char *)cmd_buf, &new_gw)){
+         netif_set_gw(n, &new_gw);
+        }
         break;
+    }
 
     case '4':
     {
