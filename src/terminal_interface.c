@@ -15,9 +15,35 @@
 #include "lwip/netif.h"
 #include "ipv4/lwip/ip_addr.h"
 #include "terminal_interface.h"
+#include "UDP_source.h"
 
 #define sciREGx sciREG1
 uint8_t cmd_buf[CMD_BUFFER_SIZE];
+
+static dest_node_t dest_pool[MAX_DEST];
+
+dest_node_t *dest_list_add(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
+{
+    dest_node_t *new_node = NULL;
+
+    int i;
+    for(i = 0; i < MAX_DEST; i++)
+    {
+        if(dest_pool[i].in_use == 0)
+        {
+        new_node = &dest_pool[i];
+        break;
+        }
+    }
+    if(NULL == new_node) return NULL;
+    new_node->in_use = 1;
+    IP4_ADDR(&new_node->dest_addr, a , b , c , d);
+
+    new_node->next = dest_list_head;
+    dest_list_head = new_node;
+
+    return new_node;
+}
 
 void read_terminal_line(void)
 {
@@ -88,13 +114,23 @@ void read_terminal_line(void)
         while(n != NULL && idx-- > 0){
             n = n->next;
         }
+        //TODO: kullanýcý listeden büyük bir sayý girerse n = NULL olup çökertebilir
+        if (n == NULL)
+        {
+            const char Err[] = "Invalid selection... Exiting\r\n";
+            sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
+            break;
+        }
+
         ipaddr_ntoa_r(&n->ip_addr, ip_str, sizeof(ip_str));
         len = snprintf(line, sizeof(line), "Change %c.IP address(%s) to:", ch, ip_str);
         sciSend(sciREGx, (uint32_t)len, (uint8_t *)line);
         fetch_input(cmd_buf, CMD_BUFFER_SIZE);
+
         if(ipaddr_aton((const char *)cmd_buf, &new_ip)){
          netif_set_ipaddr(n, &new_ip);
         }
+        udp_source_netif_ip_changed(n);
         break;
     }
 
@@ -129,6 +165,13 @@ void read_terminal_line(void)
         while(n != NULL && idx-- > 0){
             n = n->next;
         }
+
+        if (n == NULL)
+        {
+            const char Err[] = "Invalid selection... Exiting\r\n";
+            sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
+            break;
+        }
         ipaddr_ntoa_r(&n->gw, ip_str, sizeof(ip_str));
         len = snprintf(line, sizeof(line), "Change %c.GW address(%s) to:", ch, ip_str);
         sciSend(sciREGx, (uint32_t)len, (uint8_t *)line);
@@ -150,33 +193,42 @@ void read_terminal_line(void)
 
         uint8_t i = 1;
         int len;
-        struct netif *n;
+        dest_node_t *n;
         char ip_str[16];
         char line[48];
-        ip_addr_t new_gw;
+        ip_addr_t new_dest;
 
-        for (n = netif_list; n != NULL; n = n->next)
+        for (n = dest_list_head; n != NULL; n = n->next)
         {
-            ipaddr_ntoa_r(&n->gw, ip_str, sizeof(ip_str));
-            len = sprintf(line, "%d.GW adress: %s\r\n", i, ip_str);
+            ipaddr_ntoa_r(&n->dest_addr, ip_str, sizeof(ip_str));
+            len = sprintf(line, "%d.dest adress: %s\r\n", i, ip_str);
             sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
             sciSendByte(sciREGx, '\r');
             i++;
         }
 
-        n = netif_list;
+        n = dest_list_head;
         sciReceive(sciREGx, 1, &ch);
         idx = (uint32_t)(ch - '0');
         idx--;
         while(n != NULL && idx-- > 0){
             n = n->next;
         }
-        ipaddr_ntoa_r(&n->gw, ip_str, sizeof(ip_str));
-        len = snprintf(line, sizeof(line), "Change %c.GW address(%s) to:", ch, ip_str);
+
+        if (n == NULL)
+        {
+            const char Err[] = "Invalid selection... Exiting\r\n";
+            sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
+            break;
+        }
+
+        ipaddr_ntoa_r(&n->dest_addr, ip_str, sizeof(ip_str));
+        len = snprintf(line, sizeof(line), "Change %c.dest address(%s) to:", ch, ip_str);
         sciSend(sciREGx, (uint32_t)len, (uint8_t *)line);
         fetch_input(cmd_buf, CMD_BUFFER_SIZE);
-        if(ipaddr_aton((const char *)cmd_buf, &new_gw)){
-         netif_set_gw(n, &new_gw);
+        //give new_dest the address from cmd_buf
+        if(ipaddr_aton((const char *)cmd_buf, &new_dest)){
+         n->dest_addr = new_dest;
         }
         break;
     }

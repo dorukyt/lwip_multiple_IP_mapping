@@ -31,6 +31,7 @@ typedef struct
 typedef struct
 {
     struct udp_pcb *pcb;
+    struct netif *netif;
     volatile udp_rx_msg_t rx_msg;
     volatile u32_t rx_count;
     volatile u32_t rx_drop_count;
@@ -39,7 +40,11 @@ typedef struct
 
 u16_t udp_source_get_local_port(u8_t handle);
 
-err_t udp_source_add_listener(ip_addr_t *local_ip, u16_t local_port, u8_t *handle_out);
+err_t udp_source_renew_ip(u8_t handle, ip_addr_t *new_local_ip);
+
+void udp_source_netif_ip_changed(struct netif *netif);
+
+err_t udp_source_add_listener(struct netif *netif, u16_t local_port, u8_t *handle_out);
 
 u8_t udp_source_poll_rx(u8_t handle, udp_rx_msg_t *msg);
 

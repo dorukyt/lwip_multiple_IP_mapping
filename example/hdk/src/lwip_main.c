@@ -74,6 +74,9 @@ void 	sciDisplayText		(sciBASE_t *sci, uint8_t *text,uint32_t length);
 extern volatile uint8_t send_main_flag;
 extern volatile uint8_t send_alias_flag;
 
+//linked list structure for the destination IP addresses
+dest_node_t *dest_list_head = NULL;
+
 void smallDelay(void) {
 	  static volatile unsigned int delayval;
 	  delayval = 10000;
@@ -106,8 +109,13 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
     //TODO:
     //Create a linked list design for destination IP addresses to be later used for
     //selecting, adding, deleting and changing the dest addresses
+
     ip_addr_t dest;
     IP4_ADDR(&dest, 12, 0, 0, 100);
+
+    dest_list_add(12, 0, 0, 100);
+    dest_list_add(20, 0, 0, 20);
+
     const char *main_message = "Hello from 10.0.0.10";
     const char *alias_message = "Hello from 11.0.0.11";
 
@@ -195,15 +203,15 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 	u8_t h_main;
 	u8_t h_alias;
 
-	if (udp_source_add_listener(&g_main_netif->ip_addr, 5000, &h_main) == ERR_OK)
+	if (udp_source_add_listener(g_main_netif, 4000, &h_main) == ERR_OK)
     {
         char ip_str[16];
         ipaddr_ntoa_r(&g_main_netif->ip_addr, ip_str, sizeof(ip_str));
 
         char msg[64];
         int msg_len = snprintf(msg, sizeof(msg),
-                               "\r\nUDP Source '%s' init OK (port 5000)",
-                               ip_str);
+                               "\r\nUDP Source '%s' init OK (port %u)",
+                               ip_str, (unsigned) udp_source_get_local_port(h_main));
         sciDisplayText(sciREGx, (uint8_t*) msg, (uint32_t) msg_len);
         sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
     }
@@ -213,15 +221,15 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
         sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
     }
 
-    if (udp_source_add_listener(&g_alias_netif->ip_addr, 5000, &h_alias) == ERR_OK)
+    if (udp_source_add_listener(g_alias_netif, 3000, &h_alias) == ERR_OK)
     {
         char ip_str[16];
         ipaddr_ntoa_r(&g_alias_netif->ip_addr, ip_str, sizeof(ip_str));
 
         char msg[64];
         int msg_len = snprintf(msg, sizeof(msg),
-                               "\r\nUDP Source '%s' init OK (port 5000)",
-                               ip_str);
+                               "\r\nUDP Source '%s' init OK (port %u)",
+                               ip_str, (unsigned) udp_source_get_local_port(h_alias));
         sciDisplayText(sciREGx, (uint8_t*) msg, (uint32_t) msg_len);
         sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
     }
@@ -251,13 +259,13 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 
 #endif
 
+    /* TODO: Will delete later
     temp_ip.addr = anaIpAddr;
     ipaddr_ntoa_r(&temp_ip, str_anaIp, sizeof(str_anaIp));
     txtIPAddrItoA = (uint8_t*) str_anaIp; // Terminale basilacak pointer'i ayarla
 
     if (sanalIpAddr != 0)
     {
-        // Sanal IP'yi text'e cevir ve bizim str_sanalIp dizimize yaz
         temp_ip.addr = sanalIpAddr;
         ipaddr_ntoa_r(&temp_ip, str_sanalIp, sizeof(str_sanalIp));
         txtIPAddrItoA2 = (uint8_t*) str_sanalIp; // Ikinci pointer'i ayarla
@@ -274,7 +282,49 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
     sciDisplayText(sciREGx, txtIPAddrTxt3, sizeof(txtIPAddrTxt3));
     sciDisplayText(sciREGx, txtIPAddrTxt3_IP, sizeof(txtIPAddrTxt3_IP));
     sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+     */
 
+    /* --- Read the current IP address from the structures and write them in the terminal --- */
+    {
+        char ip_line[16];
+
+        /* Ana IP: her zaman g_main_netif->ip_addr'dan okunur (canli deger) */
+        sciDisplayText(sciREGx, txtIPAddrTxt, sizeof(txtIPAddrTxt));
+        ipaddr_ntoa_r(&g_main_netif->ip_addr, ip_line, sizeof(ip_line));
+        sciDisplayText(sciREGx, (uint8_t*) ip_line, (uint32_t) strlen(ip_line));
+        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+
+        /* Sanal IP: alias netif varsa canli degerini oku */
+        sciDisplayText(sciREGx, txtIPAddrTxt2, sizeof(txtIPAddrTxt2));
+        if (g_alias_netif != NULL)
+        {
+            ipaddr_ntoa_r(&g_alias_netif->ip_addr, ip_line, sizeof(ip_line));
+            sciDisplayText(sciREGx, (uint8_t*) ip_line, (uint32_t) strlen(ip_line));
+        }
+        else
+        {
+            sciDisplayText(sciREGx, (uint8_t*) "(yok)", 5);
+        }
+        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+
+        /* Alici (dest) IP: linked list'in ilk elemanindan oku */
+        sciDisplayText(sciREGx, txtIPAddrTxt3, sizeof(txtIPAddrTxt3));
+        if (dest_list_head != NULL)
+        {
+            ipaddr_ntoa_r(&dest_list_head->dest_addr, ip_line, sizeof(ip_line));
+            sciDisplayText(sciREGx, (uint8_t*) ip_line, (uint32_t) strlen(ip_line));
+            sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+
+            sciDisplayText(sciREGx, txtIPAddrTxt3, sizeof(txtIPAddrTxt3));
+            ipaddr_ntoa_r(&dest_list_head->next->dest_addr, ip_line, sizeof(ip_line));
+            sciDisplayText(sciREGx, (uint8_t*) ip_line, (uint32_t) strlen(ip_line));
+        }
+        else
+        {
+            sciDisplayText(sciREGx, (uint8_t*) "(yok)", 5);
+        }
+        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    }
 
     /* Loop forever.  All the work is done in interrupt handlers. */
     while (1)
@@ -338,9 +388,10 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
         if (1 == send_main_flag)
         {
             send_main_flag = 0;
-            err_t send_err = udp_data_send(h_main, g_main_netif, &dest, 5000,
+            err_t send_err = udp_data_send(h_main, g_main_netif, &dest_list_head->dest_addr, 5000,
                                            (const u8_t*) main_message,
                                            (u16_t) strlen(main_message));
+
             if (send_err != ERR_OK)
             {
                 char err_msg[40];
@@ -348,14 +399,16 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
                                   "\r\nUDP send err: %d\r\n", (int) send_err);
                 sciDisplayText(sciREGx, (uint8_t*) err_msg, (uint32_t) el);
             }
+
         }
 
         if (1 == send_alias_flag)
         {
             send_alias_flag = 0;
-            err_t send_err = udp_data_send(h_alias, g_alias_netif, &dest, 4000,
+            err_t send_err = udp_data_send(h_alias, g_alias_netif, &dest_list_head->next->dest_addr, 4000,
                                            (const u8_t*) alias_message,
                                            (u16_t) strlen(alias_message));
+
             if (send_err != ERR_OK)
             {
                 char err_msg[40];
@@ -363,6 +416,7 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
                                   "\r\nUDP send err: %d\r\n", (int) send_err);
                 sciDisplayText(sciREGx, (uint8_t*) err_msg, (uint32_t) el);
             };
+
         }
 
         if(1 == terminal_input_flag){
