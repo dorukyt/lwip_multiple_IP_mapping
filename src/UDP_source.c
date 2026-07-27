@@ -21,6 +21,44 @@ static udp_listener_t s_listeners[UDP_MAX_LISTENERS];
 static void udp_rx_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
                             ip_addr_t *addr, u16_t port);
 
+err_t udp_source_renew_ip(u8_t handle, ip_addr_t *new_local_ip)
+{
+    err_t err;
+
+    //check if users input has null pointers
+    if (new_local_ip == NULL
+            || !(handle < UDP_MAX_LISTENERS && s_listeners[handle].in_use == 1)) //check if we are withing max_listeners limit and the pcb is in use
+    {
+        return ERR_VAL;
+    }
+    SYS_ARCH_DECL_PROTECT(lev);
+    SYS_ARCH_PROTECT(lev);
+    struct udp_pcb *pcb = s_listeners[handle].pcb;
+    err = udp_bind(pcb, new_local_ip, pcb->local_port);
+    SYS_ARCH_UNPROTECT(lev);
+    return err;
+}
+
+//call after a netif's ip_addr has changed; rebinds every listener on that netif
+void udp_source_netif_ip_changed(struct netif *netif)
+{
+    u8_t idx;
+    SYS_ARCH_DECL_PROTECT(lev);
+
+    if (netif == NULL) return;
+
+    SYS_ARCH_PROTECT(lev);
+    for (idx = 0; idx < UDP_MAX_LISTENERS; idx++)
+    {
+        if (s_listeners[idx].in_use && s_listeners[idx].netif == netif)
+        {
+            udp_bind(s_listeners[idx].pcb, &netif->ip_addr,
+                     s_listeners[idx].pcb->local_port);
+        }
+    }
+    SYS_ARCH_UNPROTECT(lev);
+}
+
 //adds a listening port for the designated IP and Port number
 //@arg local_ip: chose the netif with the IP user want to use to send data
 //@arg local_port: chose which port number to send the data from
@@ -28,7 +66,7 @@ static void udp_rx_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
 //                 later can be used as udp_source_remove_listener(&handle)
 //                 and udp_source_poll_rx(handle, &msg)
 //@return err_t: returns the error code of the operation
-err_t udp_source_add_listener(ip_addr_t *local_ip, u16_t local_port,
+err_t udp_source_add_listener(struct netif *netif, u16_t local_port,
                               u8_t *handle_out)
 {
 
@@ -37,7 +75,7 @@ err_t udp_source_add_listener(ip_addr_t *local_ip, u16_t local_port,
     struct udp_pcb *new_pcb;
 
     //check if users input has null pointers
-    if (local_ip == NULL || handle_out == NULL)
+    if (netif == NULL || handle_out == NULL)
     {
         return ERR_VAL;
     }
@@ -55,7 +93,7 @@ err_t udp_source_add_listener(ip_addr_t *local_ip, u16_t local_port,
             }
 
             //create a new pcb in empty spot
-            err = udp_bind(new_pcb, local_ip, local_port);
+            err = udp_bind(new_pcb, &netif->ip_addr, local_port);
             if (err != ERR_OK)
             {
                 udp_remove(new_pcb);
@@ -66,6 +104,7 @@ err_t udp_source_add_listener(ip_addr_t *local_ip, u16_t local_port,
             //place the new pcb to receive the data
             udp_recv(new_pcb, udp_rx_callback, (void*) (uintptr_t) idx);
             s_listeners[idx].pcb = new_pcb;
+            s_listeners[idx].netif = netif;
             s_listeners[idx].in_use = 1;
             s_listeners[idx].rx_count = 0;
             s_listeners[idx].rx_drop_count = 0;
@@ -105,7 +144,8 @@ void udp_source_remove_listener(u8_t handle)
 err_t udp_data_send(u8_t handle, struct netif *tx_netif, ip_addr_t *ip_addr_rx,
                     u16_t port_number, const u8_t *data, u16_t data_len)
 {
-
+//return ERR if there is no tx structure or data on the line
+//amount of udp ports exceeds the udp_max_listeners or the port isn't in use
     if (NULL == tx_netif || NULL == data || 0 == data_len
             || !(handle < UDP_MAX_LISTENERS && s_listeners[handle].in_use == 1))
     {
