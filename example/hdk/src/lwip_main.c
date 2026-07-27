@@ -294,7 +294,13 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
         sciDisplayText(sciREGx, (uint8_t*) ip_line, (uint32_t) strlen(ip_line));
         sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
+        sciDisplayText(sciREGx, txtIPAddrTxt3, sizeof(txtIPAddrTxt3));
+        ipaddr_ntoa_r(&dest_list_head->dest_addr, ip_line, sizeof(ip_line));
+        sciDisplayText(sciREGx, (uint8_t*) ip_line, (uint32_t) strlen(ip_line));
+        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+
         /* Sanal IP: alias netif varsa canli degerini oku */
+        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
         sciDisplayText(sciREGx, txtIPAddrTxt2, sizeof(txtIPAddrTxt2));
         if (g_alias_netif != NULL)
         {
@@ -308,13 +314,8 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
         sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
         /* Alici (dest) IP: linked list'in ilk elemanindan oku */
-        sciDisplayText(sciREGx, txtIPAddrTxt3, sizeof(txtIPAddrTxt3));
         if (dest_list_head != NULL)
         {
-            ipaddr_ntoa_r(&dest_list_head->dest_addr, ip_line, sizeof(ip_line));
-            sciDisplayText(sciREGx, (uint8_t*) ip_line, (uint32_t) strlen(ip_line));
-            sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-
             sciDisplayText(sciREGx, txtIPAddrTxt3, sizeof(txtIPAddrTxt3));
             ipaddr_ntoa_r(&dest_list_head->next->dest_addr, ip_line, sizeof(ip_line));
             sciDisplayText(sciREGx, (uint8_t*) ip_line, (uint32_t) strlen(ip_line));

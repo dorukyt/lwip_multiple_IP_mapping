@@ -7,7 +7,6 @@
 
 /*
  * Captures and displays the input of the user on the serial terminal
- * TODO:Changing the IP, GW and dest IP
  */
 #include <stdio.h>
 
@@ -16,6 +15,7 @@
 #include "ipv4/lwip/ip_addr.h"
 #include "terminal_interface.h"
 #include "UDP_source.h"
+#include "ping.h"
 
 #define sciREGx sciREG1
 uint8_t cmd_buf[CMD_BUFFER_SIZE];
@@ -67,11 +67,13 @@ void read_terminal_line(void)
     const char Msg_2[] = "2. Change GW address\r\n";
     const char Msg_3[] = "3. Change the dest IP\r\n";
     const char Msg_4[] = "4. Reset the ARP tables\r\n";
+    const char Msg_5[] = "5. Ping an IP address\r\n";
     sciSend(sciREGx, sizeof(MsgMain) - 1, (uint8_t*) MsgMain);
     sciSend(sciREGx, sizeof(Msg_1) - 1, (uint8_t*) Msg_1);
     sciSend(sciREGx, sizeof(Msg_2) - 1, (uint8_t*) Msg_2);
     sciSend(sciREGx, sizeof(Msg_3) - 1, (uint8_t*) Msg_3);
     sciSend(sciREGx, sizeof(Msg_4) - 1, (uint8_t*) Msg_4);
+    sciSend(sciREGx, sizeof(Msg_5) - 1, (uint8_t*) Msg_5);
     sciSendByte(sciREGx, '\r');
     sciSendByte(sciREGx, '\n');
 
@@ -114,7 +116,6 @@ void read_terminal_line(void)
         while(n != NULL && idx-- > 0){
             n = n->next;
         }
-        //TODO: kullanýcý listeden büyük bir sayý girerse n = NULL olup çökertebilir
         if (n == NULL)
         {
             const char Err[] = "Invalid selection... Exiting\r\n";
@@ -184,7 +185,6 @@ void read_terminal_line(void)
 
     case '3':
     {
-        //TODO: Change this block of code to dest Ip address configurator
         // code block
         const char Msg[] = "Please chose which dest IP address you want to change:";
         sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
@@ -247,6 +247,111 @@ void read_terminal_line(void)
         sciSendByte(sciREGx, '\n');
     }
         break;
+
+    case '5':
+    {
+        const char Msg[] = "Please chose which netif you want to ping from:";
+        sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+        sciSendByte(sciREGx, '\r');
+        sciSendByte(sciREGx, '\n');
+
+        uint8_t i = 1;
+        int len;
+        struct netif *n;
+        char ip_str[16];
+        char line[96];
+        ip_addr_t target;
+
+        for (n = netif_list; n != NULL; n = n->next)
+        {
+            ipaddr_ntoa_r(&n->ip_addr, ip_str, sizeof(ip_str));
+            len = sprintf(line, "%d.netif IP: %s\r\n", i, ip_str);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+            sciSendByte(sciREGx, '\r');
+            i++;
+        }
+
+        n = netif_list;
+        sciReceive(sciREGx, 1, &ch);
+        idx = (uint32_t)(ch - '0');
+        idx--;
+        while (n != NULL && idx-- > 0)
+        {
+            n = n->next;
+        }
+
+        if (n == NULL)
+        {
+            const char Err[] = "Invalid selection... Exiting\r\n";
+            sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
+            break;
+        }
+
+        ipaddr_ntoa_r(&n->ip_addr, ip_str, sizeof(ip_str));
+        len = snprintf(line, sizeof(line), "Ping from %s to:", ip_str);
+        sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+        fetch_input(cmd_buf, CMD_BUFFER_SIZE);
+
+        if (!ipaddr_aton((const char*) cmd_buf, &target))
+        {
+            const char Err[] = "Invalid IP... Exiting\r\n";
+            sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
+            break;
+        }
+
+        {
+            char tgt_str[16];
+            int attempt;
+
+            ipaddr_ntoa_r(&target, tgt_str, sizeof(tgt_str));
+            len = snprintf(line, sizeof(line), "Pinging %s from %s:\r\n",
+                           tgt_str, ip_str);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+            for (attempt = 0; attempt < PING_ATTEMPT_COUNT; attempt++)
+            {
+                ping_result_t res;
+                err_t perr = ping_send(n, &target);
+
+                if (perr != ERR_OK)
+                {
+                    len = snprintf(line, sizeof(line),
+                                   "Ping send err: %d\r\n", (int) perr);
+                    sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+                    break;
+                }
+
+                if (ping_wait_reply(PING_TIMEOUT_MS, &res))
+                {
+                    char from_str[16];
+                    ipaddr_ntoa_r(&res.from, from_str, sizeof(from_str));
+
+                    if (0 == res.rtt_ms)
+                    {
+                        len = snprintf(line, sizeof(line),
+                                "Reply from %s: seq=%u bytes=%u time<1ms TTL=%u\r\n",
+                                from_str, (unsigned) res.seqno,
+                                (unsigned) res.data_len, (unsigned) res.ttl);
+                    }
+                    else
+                    {
+                        len = snprintf(line, sizeof(line),
+                                "Reply from %s: seq=%u bytes=%u time=%lums TTL=%u\r\n",
+                                from_str, (unsigned) res.seqno,
+                                (unsigned) res.data_len,
+                                (unsigned long) res.rtt_ms, (unsigned) res.ttl);
+                    }
+                    sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+                }
+                else
+                {
+                    const char Tmo[] = "Request timed out\r\n";
+                    sciSend(sciREGx, sizeof(Tmo) - 1, (uint8_t*) Tmo);
+                }
+            }
+        }
+        break;
+    }
 
     default:
     {
