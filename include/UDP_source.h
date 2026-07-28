@@ -33,8 +33,8 @@ typedef struct
     struct udp_pcb *pcb;
     struct netif *netif;
     volatile udp_rx_msg_t rx_msg;
-    volatile u32_t rx_count;
-    volatile u32_t rx_drop_count;
+    volatile u32_t rx_count; //ilerleyen zamanlarda ne kadar paketin ulaþýp
+    volatile u32_t rx_drop_count; //ne kadarýn ulaþmadýðýný görmek ve debug için kullanýlabilir
     u8_t in_use;
 }udp_listener_t;
 
