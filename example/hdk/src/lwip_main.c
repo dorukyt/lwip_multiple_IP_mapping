@@ -259,31 +259,6 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 
 #endif
 
-    /* TODO: Will delete later
-    temp_ip.addr = anaIpAddr;
-    ipaddr_ntoa_r(&temp_ip, str_anaIp, sizeof(str_anaIp));
-    txtIPAddrItoA = (uint8_t*) str_anaIp; // Terminale basilacak pointer'i ayarla
-
-    if (sanalIpAddr != 0)
-    {
-        temp_ip.addr = sanalIpAddr;
-        ipaddr_ntoa_r(&temp_ip, str_sanalIp, sizeof(str_sanalIp));
-        txtIPAddrItoA2 = (uint8_t*) str_sanalIp; // Ikinci pointer'i ayarla
-    }
-
-    sciDisplayText(sciREGx, txtIPAddrTxt, sizeof(txtIPAddrTxt));
-    sciDisplayText(sciREGx, txtIPAddrItoA, 16);
-    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-
-    sciDisplayText(sciREGx, txtIPAddrTxt2, sizeof(txtIPAddrTxt2));
-    sciDisplayText(sciREGx, txtIPAddrItoA2, 16);
-    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-
-    sciDisplayText(sciREGx, txtIPAddrTxt3, sizeof(txtIPAddrTxt3));
-    sciDisplayText(sciREGx, txtIPAddrTxt3_IP, sizeof(txtIPAddrTxt3_IP));
-    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-     */
-
     /* --- Read the current IP address from the structures and write them in the terminal --- */
     {
         char ip_line[16];

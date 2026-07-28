@@ -14,30 +14,31 @@
 #include <string.h>
 #include <stdint.h>
 
-static volatile udp_rx_msg_t s_rx_msg;
-
 static udp_listener_t s_listeners[UDP_MAX_LISTENERS];
+
+static udp_sock_id_t make_id(u8_t idx)
+{
+    u16_t generation, socket_id;
+    generation = (u16_t)s_listeners[idx].generation_count;
+    socket_id = generation << 8 | idx;
+    return socket_id;
+}
+
+static s8_t resolve(udp_sock_id_t id)
+{
+    u8_t idx, generation;
+    idx = (u8_t)(id & 0xFF);
+    generation = (u8_t)(id >> 8);
+
+    if(idx >= UDP_MAX_LISTENERS || 0 == s_listeners[idx].in_use || generation != s_listeners[idx].generation_count )
+        {
+            return -1;
+        }
+    return idx;
+}
 
 static void udp_rx_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
                             ip_addr_t *addr, u16_t port);
-
-err_t udp_source_renew_ip(u8_t handle, ip_addr_t *new_local_ip)
-{
-    err_t err;
-
-    //check if users input has null pointers
-    if (new_local_ip == NULL
-            || !(handle < UDP_MAX_LISTENERS && s_listeners[handle].in_use == 1)) //check if we are withing max_listeners limit and the pcb is in use
-    {
-        return ERR_VAL;
-    }
-    SYS_ARCH_DECL_PROTECT(lev);
-    SYS_ARCH_PROTECT(lev);
-    struct udp_pcb *pcb = s_listeners[handle].pcb;
-    err = udp_bind(pcb, new_local_ip, pcb->local_port);
-    SYS_ARCH_UNPROTECT(lev);
-    return err;
-}
 
 //call after a netif's ip_addr has changed; rebinds every listener on that netif
 void udp_source_netif_ip_changed(struct netif *netif)
@@ -62,12 +63,10 @@ void udp_source_netif_ip_changed(struct netif *netif)
 //adds a listening port for the designated IP and Port number
 //@arg local_ip: chose the netif with the IP user want to use to send data
 //@arg local_port: chose which port number to send the data from
-//@arg handle_out: returns the index number for the s_listeners[handle] list
-//                 later can be used as udp_source_remove_listener(&handle)
-//                 and udp_source_poll_rx(handle, &msg)
+//@arg socket_id: returns the distinct id number for the s_listeners[idx] list
 //@return err_t: returns the error code of the operation
 err_t udp_source_add_listener(struct netif *netif, u16_t local_port,
-                              u8_t *handle_out)
+                              udp_sock_id_t *socket_id)
 {
 
     u8_t idx;
@@ -75,7 +74,7 @@ err_t udp_source_add_listener(struct netif *netif, u16_t local_port,
     struct udp_pcb *new_pcb;
 
     //check if users input has null pointers
-    if (netif == NULL || handle_out == NULL)
+    if (netif == NULL || socket_id == NULL)
     {
         return ERR_VAL;
     }
@@ -109,7 +108,8 @@ err_t udp_source_add_listener(struct netif *netif, u16_t local_port,
             s_listeners[idx].rx_count = 0;
             s_listeners[idx].rx_drop_count = 0;
             s_listeners[idx].rx_msg.valid = 0;
-            *handle_out = idx;
+
+            *socket_id = make_id(idx);
 
             return ERR_OK;
 
@@ -119,22 +119,22 @@ err_t udp_source_add_listener(struct netif *netif, u16_t local_port,
 }
 
 
-void udp_source_remove_listener(u8_t handle)
+void udp_source_remove_listener(udp_sock_id_t socket_id)
 {
     SYS_ARCH_DECL_PROTECT(lev);
-    if (!(handle < UDP_MAX_LISTENERS && s_listeners[handle].in_use == 1))
-    {
-        return;
-    }
+    s8_t idx;
+    idx = resolve(socket_id);
+    if(idx < 0) return;
 
     SYS_ARCH_PROTECT(lev);
-    if (NULL != s_listeners[handle].pcb)
+    if (NULL != s_listeners[idx].pcb)
     {
-        udp_remove(s_listeners[handle].pcb);
-        s_listeners[handle].pcb = NULL;
-        s_listeners[handle].in_use = 0;
+        udp_remove(s_listeners[idx].pcb);
+        s_listeners[idx].pcb = NULL;
     }
-    s_listeners[handle].rx_msg.valid = 0;
+    s_listeners[idx].rx_msg.valid = 0;
+    s_listeners[idx].in_use = 0;
+    s_listeners[idx].generation_count++;
     SYS_ARCH_UNPROTECT(lev);
 }
 
