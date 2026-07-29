@@ -200,8 +200,8 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 	sciDisplayText(sciREGx, (uint8_t*)"..DONE", sizeof("..DONE"));
 	sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
-	u8_t h_main;
-	u8_t h_alias;
+	udp_sock_id_t h_main;
+	udp_sock_id_t h_alias;
 
 	if (udp_source_add_listener(g_main_netif, 4000, &h_main) == ERR_OK)
     {
