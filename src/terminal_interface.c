@@ -16,6 +16,8 @@
 #include "terminal_interface.h"
 #include "UDP_source.h"
 #include "ping.h"
+#include "net_manager.h"
+#include "string.h"
 
 #define sciREGx sciREG1
 uint8_t cmd_buf[CMD_BUFFER_SIZE];
@@ -68,12 +70,16 @@ void read_terminal_line(void)
     const char Msg_3[] = "3. Change the dest IP\r\n";
     const char Msg_4[] = "4. Reset the ARP tables\r\n";
     const char Msg_5[] = "5. Ping an IP address\r\n";
+    const char Msg_6[] = "6. Add network interface\r\n";
+    const char Msg_7[] = "7. Delete network interface\r\n";
     sciSend(sciREGx, sizeof(MsgMain) - 1, (uint8_t*) MsgMain);
     sciSend(sciREGx, sizeof(Msg_1) - 1, (uint8_t*) Msg_1);
     sciSend(sciREGx, sizeof(Msg_2) - 1, (uint8_t*) Msg_2);
     sciSend(sciREGx, sizeof(Msg_3) - 1, (uint8_t*) Msg_3);
     sciSend(sciREGx, sizeof(Msg_4) - 1, (uint8_t*) Msg_4);
     sciSend(sciREGx, sizeof(Msg_5) - 1, (uint8_t*) Msg_5);
+    sciSend(sciREGx, sizeof(Msg_6) - 1, (uint8_t*) Msg_6);
+    sciSend(sciREGx, sizeof(Msg_7) - 1, (uint8_t*) Msg_7);
     sciSendByte(sciREGx, '\r');
     sciSendByte(sciREGx, '\n');
 
@@ -352,6 +358,59 @@ void read_terminal_line(void)
         }
         break;
     }
+
+    case '6':
+    {
+        // code block
+        char Msg[] = "Please write the interface you want to add\r\n";
+        sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+
+        ip_addr_t new_ip;
+        ip_addr_t new_netmask;
+        ip_addr_t new_gw;
+
+        memset(Msg, 0, sizeof(Msg));
+        strcpy(Msg, "IP Address: ");
+        sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+        fetch_input(cmd_buf, CMD_BUFFER_SIZE);
+        if (!(ipaddr_aton((const char *)cmd_buf, &new_ip)))
+        {
+            const char Msg[] = "Invalid value, netif not saved\r\n";
+            sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+            break;
+        }
+
+        memset(Msg, 0, sizeof(Msg));
+        strcpy(Msg, "Netmask: ");
+        sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+        fetch_input(cmd_buf, CMD_BUFFER_SIZE);
+        if (!(ipaddr_aton((const char *)cmd_buf, &new_netmask)))
+        {
+            const char Msg[] = "Invalid value, netif not saved\r\n";
+            sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+            break;
+        }
+
+        memset(Msg, 0, sizeof(Msg));
+        strcpy(Msg, "GW Address: ");
+        sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+        fetch_input(cmd_buf, CMD_BUFFER_SIZE);
+        if (!(ipaddr_aton((const char *)cmd_buf, &new_gw)))
+        {
+            const char Msg[] = "Invalid value, netif not saved\r\n";
+            sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+            break;
+        }
+
+        if(ERR_OK == net_if_add(&new_ip, &new_netmask, &new_gw))
+        {
+            const char Msg[] = "\r\nNew netif has been succesfully created\r\n";
+            sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+        }
+        break;
+    }
+
+
 
     default:
     {
