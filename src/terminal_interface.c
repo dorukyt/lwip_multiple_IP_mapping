@@ -369,9 +369,8 @@ void read_terminal_line(void)
         ip_addr_t new_netmask;
         ip_addr_t new_gw;
 
-        memset(Msg, 0, sizeof(Msg));
-        strcpy(Msg, "IP Address: ");
-        sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+        const char PromptIP[] = "IP Address: ";
+        sciSend(sciREGx, sizeof(PromptIP) - 1, (uint8_t*) PromptIP);
         fetch_input(cmd_buf, CMD_BUFFER_SIZE);
         if (!(ipaddr_aton((const char *)cmd_buf, &new_ip)))
         {
@@ -380,9 +379,8 @@ void read_terminal_line(void)
             break;
         }
 
-        memset(Msg, 0, sizeof(Msg));
-        strcpy(Msg, "Netmask: ");
-        sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+        const char PromptNetMask[] = "Netmas Address: ";
+        sciSend(sciREGx, sizeof(PromptNetMask) - 1, (uint8_t*) PromptNetMask);
         fetch_input(cmd_buf, CMD_BUFFER_SIZE);
         if (!(ipaddr_aton((const char *)cmd_buf, &new_netmask)))
         {
@@ -391,9 +389,8 @@ void read_terminal_line(void)
             break;
         }
 
-        memset(Msg, 0, sizeof(Msg));
-        strcpy(Msg, "GW Address: ");
-        sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+        const char PromptGW[] = "GW Address: ";
+        sciSend(sciREGx, sizeof(PromptGW) - 1, (uint8_t*) PromptGW);
         fetch_input(cmd_buf, CMD_BUFFER_SIZE);
         if (!(ipaddr_aton((const char *)cmd_buf, &new_gw)))
         {
@@ -410,7 +407,65 @@ void read_terminal_line(void)
         break;
     }
 
+    case '7':
+    {
+        // code block
 
+        uint8_t i = 1;
+        int len;
+        struct netif *n;
+        char ip_str[16];
+        char line[96];
+
+        char Msg[] = "Please chose the interface you want to delete\r\n\n";
+        sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+
+        //writes the netif info(IP,Netmask,GW) for all the netifs
+        for (n = netif_list; n != NULL; n = n->next)
+        {
+            len = sprintf(line, "%d.netif\r\n", i);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+            ipaddr_ntoa_r(&n->ip_addr, ip_str, sizeof(ip_str));
+            len = sprintf(line, "IP:      %s\r\n", ip_str);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+            ipaddr_ntoa_r(&n->netmask, ip_str, sizeof(ip_str));
+            len = sprintf(line, "Netmask: %s\r\n", ip_str);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+            ipaddr_ntoa_r(&n->gw, ip_str, sizeof(ip_str));
+            len = sprintf(line, "GW:      %s\r\n", ip_str);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+            sciSendByte(sciREGx, '\r');
+            sciSendByte(sciREGx, '\n');
+            i++;
+        }
+
+        n = netif_list;
+        sciReceive(sciREGx, 1, &ch);
+        idx = (uint32_t)(ch - '0');
+        idx--;
+        while(n != NULL && idx-- > 0){
+            n = n->next;
+        }
+        if (n == NULL)
+        {
+            const char Err[] = "Invalid selection... Exiting\r\n";
+            sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
+            break;
+        }
+        if(ERR_OK == net_if_remove(n))
+        {
+            const char Msg[] = "\r\nNetif has been succesfully deleted\r\n";
+            sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+            break;
+        }
+
+        const char Err[] = "There has been an error while deleting the netif\r\n";
+        sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
+        break;
+    }
 
     default:
     {
