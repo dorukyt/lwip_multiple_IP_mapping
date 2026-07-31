@@ -515,15 +515,26 @@ void read_terminal_line(void)
             char Msg[] ="Active Sockets:\r\n";
             sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
 
-            for(j=1; j < UDP_MAX_LISTENERS+1; j++)
+            if (!(0 == udp_source_count_sockets(n)))
             {
-                if(UDP_SOCK_ID_INVALID != udp_source_get_socket(n, j-1).socket_id)
+                for (j = 1; j < UDP_MAX_LISTENERS + 1; j++)
                 {
-                socket_port = udp_source_get_socket(n, j-1).local_port;
-                len = sprintf(line, "%d.socket(local_port): %u\r\n", j , socket_port);
-                sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
-                }
+                    if (UDP_SOCK_ID_INVALID
+                            != udp_source_get_socket(n, j - 1).socket_id)
+                    {
+                        socket_port =
+                                udp_source_get_socket(n, j - 1).local_port;
+                        len = sprintf(line, "%d.socket(local_port): %u\r\n", j,
+                                      socket_port);
+                        sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+                    }
 
+                }
+            }
+            else
+            {
+                char Err[] = "No socket is present\r\n\n";
+                sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
             }
             i++;
             sciSend(sciREGx, sizeof(Spacer) - 1, (uint8_t*) Spacer);

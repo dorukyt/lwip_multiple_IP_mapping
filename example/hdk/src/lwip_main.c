@@ -116,6 +116,7 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
     dest_list_add(12, 0, 0, 100);
     dest_list_add(20, 0, 0, 20);
 
+    //TODO:Gönderimde dinamik sisteme geçilince, aþaðýdaki kod silinecek
     const char *main_message = "Hello from 10.0.0.10";
     const char *alias_message = "Hello from 11.0.0.11";
 
@@ -165,6 +166,7 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 		return;
 	}
 
+	//TODO:Dinamik sisteme geçildi, aþaðýdaki kod silinecek
 	/* 3) Sanal (alias) IP: donanima dokunmaz, sadece netif_list'e
 	 *    yeni bir dugum ekler; TX cikisi birincil netif ile paylasilir. */
 	sanalIpAddr = lwIPAliasAdd(0,
@@ -200,6 +202,8 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 	sciDisplayText(sciREGx, (uint8_t*)"..DONE", sizeof("..DONE"));
 	sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
+#if 0
+	//TODO:Dinamik sisteme geçildi, aþaðýdaki kod silinecek
 	udp_sock_id_t h_main;
 	udp_sock_id_t h_alias;
 
@@ -238,7 +242,7 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
         sciDisplayText(sciREGx, (uint8_t*) "\r\nUDP App Alias init FAILED!", 28);
         sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
     }
-
+#endif
 
 
 
@@ -306,61 +310,58 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
     while (1)
     {
 
-        /* UDP RX poll --- ISR'dan gelen paket varsa UART'a yazdir */
+
+        //rx_polling
+        //polls in the loop to get the data that is present at the UDP socket buffer
+        //writes down the package specifications and sender receiver information
         {
-            udp_rx_msg_t rx_0;
-            if (udp_source_poll_rx(h_main, &rx_0))
-            {
-                char my_ip_str[16];
-                ipaddr_ntoa_r(&g_main_netif->ip_addr, my_ip_str, sizeof(my_ip_str));
+            u8_t j;
+            udp_rx_msg_t rx_msg;
+            udp_netif_socket_info_t socket;
+            struct netif *n;
 
-                char rx0_info[112];
-                int n = snprintf(rx0_info, sizeof(rx0_info),
-                                 "\r\nUDP RX: %u bytes, %s:%u -> %s:%u\r\n",
-                                 (unsigned) rx_0.data_len,
-                                 ipaddr_ntoa(&rx_0.src_ip), (unsigned) rx_0.src_port,
-                                 my_ip_str, (unsigned) udp_source_get_local_port(h_main));
-                sciDisplayText(sciREGx, (uint8_t*) rx0_info, (uint32_t) n);
+            for(n = netif_list; n != NULL; n = n->next){        //search every netif
+                for(j = 0; j < udp_source_count_sockets(n); j++)//get all the sockets on netif
+                {                                               //(searches every socket avaible on every netif)
+                    socket = udp_source_get_socket(n, j);
 
-                if (rx_0.data_len > 0)
-                {
-                    u16_t print_len = rx_0.data_len;
-                    if (print_len > 64)
-                        print_len = 64;
-                    sciDisplayText(sciREGx, (uint8_t*) "Data: ", 6);
-                    sciDisplayText(sciREGx, rx_0.data, (uint32_t) print_len);
-                    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+                    if (udp_source_poll_rx(socket.socket_id, &rx_msg))
+                    {
+                        char my_ip_str[16];
+                        ipaddr_ntoa_r(&socket.netif->ip_addr, my_ip_str,
+                                      sizeof(my_ip_str));
+
+                        char rx_info[112];
+                        int msg_len = snprintf(
+                                rx_info, sizeof(rx_info),
+                                "\r\nUDP RX: %u bytes, %s:%u -> %s:%u\r\n",
+                                (unsigned) rx_msg.data_len,
+                                ipaddr_ntoa(&rx_msg.src_ip),
+                                (unsigned) rx_msg.src_port, my_ip_str,
+                                (unsigned) socket.local_port);
+                        sciDisplayText(sciREGx, (uint8_t*) rx_info,
+                                       (uint32_t) msg_len);
+
+                        if (rx_msg.data_len > 0)
+                        {
+                            u16_t print_len = rx_msg.data_len;
+                            if (print_len > 64)
+                                print_len = 64;
+                            sciDisplayText(sciREGx, (uint8_t*) "Data: ", 6);
+                            sciDisplayText(sciREGx, rx_msg.data,
+                                           (uint32_t) print_len);
+                            sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+                        }
+
+                    }
+
                 }
             }
         }
 
-        {
-            udp_rx_msg_t rx_1;
-            if (udp_source_poll_rx(h_alias, &rx_1))
-            {
-                char my_ip_str[16];
-                ipaddr_ntoa_r(&g_alias_netif->ip_addr, my_ip_str, sizeof(my_ip_str));
 
-                char rx1_info[112];
-                int n = snprintf(rx1_info, sizeof(rx1_info),
-                                 "\r\nUDP RX: %u bytes, %s:%u -> %s:%u\r\n",
-                                 (unsigned) rx_1.data_len,
-                                 ipaddr_ntoa(&rx_1.src_ip), (unsigned) rx_1.src_port,
-                                 my_ip_str, (unsigned) udp_source_get_local_port(h_alias));
-                sciDisplayText(sciREGx, (uint8_t*) rx1_info, (uint32_t) n);
-
-                if (rx_1.data_len > 0)
-                {
-                    u16_t print_len = rx_1.data_len;
-                    if (print_len > 64)
-                        print_len = 64;
-                    sciDisplayText(sciREGx, (uint8_t*) "Data: ", 6);
-                    sciDisplayText(sciREGx, rx_1.data, (uint32_t) print_len);
-                    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-                }
-            }
-        }
-
+        //TODO: aþaðýdaki gönderim yapýsý dinamikleþtirilecek
+#if 0
         if (1 == send_main_flag)
         {
             send_main_flag = 0;
@@ -394,12 +395,13 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
             };
 
         }
-
+#endif
         if(1 == terminal_input_flag){
             read_terminal_line();
             terminal_input_flag = 0;
 
         }
+
     }
 
 
