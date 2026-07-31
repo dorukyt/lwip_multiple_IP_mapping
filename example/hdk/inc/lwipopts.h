@@ -118,6 +118,9 @@
 #define LWIP_DBG_TYPES_ON               (LWIP_DBG_ON | LWIP_DBG_TRACE \
                                          |LWIP_DBG_STATE | LWIP_DBG_FRESH)
 
+/*Amount of UDP PCB slots shared by all programs*/
+#define MEMP_NUM_UDP_PCB 20
+
 /* LwIP IP Aliasing (Multiple Netif on Single MAC) Hook */
 #define LWIP_ARP_FILTER_NETIF 1
 

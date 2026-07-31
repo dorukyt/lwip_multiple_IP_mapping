@@ -9,6 +9,7 @@
  * Captures and displays the input of the user on the serial terminal
  */
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "netif/etharp.h"
 #include "lwip/netif.h"
@@ -23,6 +24,8 @@
 uint8_t cmd_buf[CMD_BUFFER_SIZE];
 
 static dest_node_t dest_pool[MAX_DEST];
+
+char Spacer[] = "*--------------------------------------*\r\n\n";
 
 dest_node_t *dest_list_add(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 {
@@ -72,6 +75,8 @@ void read_terminal_line(void)
     const char Msg_5[] = "5. Ping an IP address\r\n";
     const char Msg_6[] = "6. Add network interface\r\n";
     const char Msg_7[] = "7. Delete network interface\r\n";
+    const char Msg_8[] = "8. Open Socket\r\n";
+    const char Msg_9[] = "9. Delete Socket\r\n";
     sciSend(sciREGx, sizeof(MsgMain) - 1, (uint8_t*) MsgMain);
     sciSend(sciREGx, sizeof(Msg_1) - 1, (uint8_t*) Msg_1);
     sciSend(sciREGx, sizeof(Msg_2) - 1, (uint8_t*) Msg_2);
@@ -80,6 +85,8 @@ void read_terminal_line(void)
     sciSend(sciREGx, sizeof(Msg_5) - 1, (uint8_t*) Msg_5);
     sciSend(sciREGx, sizeof(Msg_6) - 1, (uint8_t*) Msg_6);
     sciSend(sciREGx, sizeof(Msg_7) - 1, (uint8_t*) Msg_7);
+    sciSend(sciREGx, sizeof(Msg_8) - 1, (uint8_t*) Msg_8);
+    sciSend(sciREGx, sizeof(Msg_9) - 1, (uint8_t*) Msg_9);
     sciSendByte(sciREGx, '\r');
     sciSendByte(sciREGx, '\n');
 
@@ -379,7 +386,7 @@ void read_terminal_line(void)
             break;
         }
 
-        const char PromptNetMask[] = "Netmas Address: ";
+        const char PromptNetMask[] = "Netmask Address: ";
         sciSend(sciREGx, sizeof(PromptNetMask) - 1, (uint8_t*) PromptNetMask);
         fetch_input(cmd_buf, CMD_BUFFER_SIZE);
         if (!(ipaddr_aton((const char *)cmd_buf, &new_netmask)))
@@ -465,6 +472,199 @@ void read_terminal_line(void)
         const char Err[] = "There has been an error while deleting the netif\r\n";
         sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
         break;
+    }
+
+    case '8':
+    {
+        // code block
+
+
+        uint8_t i = 1;
+        uint8_t j;
+        u16_t socket_port;
+        udp_sock_id_t new_id;
+        int len;
+        struct netif *n;
+        char ip_str[16];
+        char line[96];
+
+        char Msg0[] = "Please chose the interface you want to add socket to\r\n\n";
+        sciSend(sciREGx, sizeof(Msg0) - 1, (uint8_t*) Msg0);
+        sciSend(sciREGx, sizeof(Spacer) - 1, (uint8_t*) Spacer);
+
+        //writes the netif info(IP,Netmask,GW) for all the netifs
+        for (n = netif_list; n != NULL; n = n->next)
+        {
+            len = sprintf(line, "%d.netif\r\n", i);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+            ipaddr_ntoa_r(&n->ip_addr, ip_str, sizeof(ip_str));
+            len = sprintf(line, "IP:      %s\r\n", ip_str);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+            ipaddr_ntoa_r(&n->netmask, ip_str, sizeof(ip_str));
+            len = sprintf(line, "Netmask: %s\r\n", ip_str);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+            ipaddr_ntoa_r(&n->gw, ip_str, sizeof(ip_str));
+            len = sprintf(line, "GW:      %s\r\n", ip_str);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+            sciSendByte(sciREGx, '\r');
+            sciSendByte(sciREGx, '\n');
+
+            char Msg[] ="Active Sockets:\r\n";
+            sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+
+            for(j=1; j < UDP_MAX_LISTENERS+1; j++)
+            {
+                if(UDP_SOCK_ID_INVALID != udp_source_get_socket(n, j-1).socket_id)
+                {
+                socket_port = udp_source_get_socket(n, j-1).local_port;
+                len = sprintf(line, "%d.socket(local_port): %u\r\n", j , socket_port);
+                sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+                }
+
+            }
+            i++;
+            sciSend(sciREGx, sizeof(Spacer) - 1, (uint8_t*) Spacer);
+        }
+
+//TODO: There is a bug here, I can't appoint more then 2 ports
+
+        n = netif_list;
+        sciReceive(sciREGx, 1, &ch);
+        idx = (uint32_t)(ch - '0');
+        idx--;
+        while(n != NULL && idx-- > 0){
+            n = n->next;
+        }
+        if (n == NULL)
+        {
+            const char Err[] = "Invalid selection... Exiting\r\n";
+            sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
+            break;
+        }
+
+        char Msg1[] ="Input new socket port:\r\n";
+        sciSend(sciREGx, sizeof(Msg1) - 1, (uint8_t*) Msg1);
+
+        fetch_input(cmd_buf, CMD_BUFFER_SIZE);            // tüm satýrý cmd_buf'a oku
+        socket_port = (u16_t) atoi((const char*) cmd_buf);       // string -> sayý
+
+        if(ERR_OK == udp_source_add_listener(n, socket_port , &new_id))
+        {
+            const char Msg[] = "\r\nSocket has been succesfully added\r\n";
+            sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+            break;
+        }
+
+        const char Err[] = "There has been an error while adding the socket\r\n";
+        sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
+        break;
+    }
+
+
+    //TODO: It didn't delete the socket
+    case '9':
+    {
+        // code block
+
+        uint8_t i = 1;
+        uint8_t j;
+        u8_t count = 0;
+        u16_t socket_port;
+        int len;
+        struct netif *n;
+        char ip_str[16];
+        char line[96];
+
+        char Msg0[] =
+                "Please chose the interface you want to delete a socket from\r\n\n";
+        sciSend(sciREGx, sizeof(Msg0) - 1, (uint8_t*) Msg0);
+        sciSend(sciREGx, sizeof(Spacer) - 1, (uint8_t*) Spacer);
+
+        //writes the netif info(IP,Netmask,GW) for all the netifs
+        for (n = netif_list; n != NULL; n = n->next)
+        {
+            len = sprintf(line, "%d.netif\r\n", i);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+            ipaddr_ntoa_r(&n->ip_addr, ip_str, sizeof(ip_str));
+            len = sprintf(line, "IP:      %s\r\n", ip_str);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+            ipaddr_ntoa_r(&n->netmask, ip_str, sizeof(ip_str));
+            len = sprintf(line, "Netmask: %s\r\n", ip_str);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+            ipaddr_ntoa_r(&n->gw, ip_str, sizeof(ip_str));
+            len = sprintf(line, "GW:      %s\r\n", ip_str);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+            sciSendByte(sciREGx, '\r');
+            sciSendByte(sciREGx, '\n');
+
+            //write the active sockets in a list to terminal
+            char Msg[] = "Active Sockets:\r\n";
+            sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
+
+            if (!(0 == udp_source_count_sockets(n)))
+            {
+                for (j = 0; j < udp_source_count_sockets(n); j++)
+                {
+                    udp_netif_socket_info_t info = udp_source_get_socket(n, j);
+                    socket_port = udp_source_get_socket(n, j).local_port;
+                    len = sprintf(line, "%d.socket(local_port): %u\r\n", j + 1, socket_port);
+                    sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+                    count++;
+                }
+            }
+            else
+            {
+                char Err[] = "No socket is present\r\n\n";
+                sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
+            }
+
+            i++;
+            sciSend(sciREGx, sizeof(Spacer) - 1, (uint8_t*) Spacer);
+        }
+
+
+        n = netif_list;
+        sciReceive(sciREGx, 1, &ch);
+        idx = (uint32_t) (ch - '0');
+        idx--;
+        while (n != NULL && idx-- > 0)
+        {
+            n = n->next;
+        }
+        if (n == NULL)
+        {
+            const char Err[] = "Invalid selection... Exiting\r\n";
+            sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
+            break;
+        }
+
+        count = 0;
+        char Msg1[] = "Select which socket you want to delete:\r\n";
+        sciSend(sciREGx, sizeof(Msg1) - 1, (uint8_t*) Msg1);
+
+        for (j = 0; j < udp_source_count_sockets(n); j++)
+        {
+            socket_port = udp_source_get_socket(n, j).local_port;
+            len = sprintf(line, "%d.socket(local_port): %u\r\n", j + 1, socket_port);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+        }
+
+        fetch_input(cmd_buf, CMD_BUFFER_SIZE);
+        uint32_t sel = (uint32_t) atoi((const char*) cmd_buf);   // 1 tabanlý seçim
+
+        if(sel < 1 || sel > udp_source_count_sockets(n)) break;
+
+        udp_sock_id_t chosen = udp_source_get_socket(n, sel - 1).socket_id;  // numara -> id
+        udp_source_remove_listener(chosen);            // id DEÐERLE geçilir (& YOK)
+
+        const char Msg[] = "\r\nSocket has been succesfully deleted\r\n";
+        sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
     }
 
     default:
