@@ -669,7 +669,12 @@ void read_terminal_line(void)
         fetch_input(cmd_buf, CMD_BUFFER_SIZE);
         uint32_t sel = (uint32_t) atoi((const char*) cmd_buf);   // 1 tabanlý seçim
 
-        if(sel < 1 || sel > udp_source_count_sockets(n)) break;
+        if(sel < 1 || sel > udp_source_count_sockets(n))
+            {
+            char Msg1[] = "Invalid Socket. Procedure not completed\r\n";
+            sciSend(sciREGx, sizeof(Msg1) - 1, (uint8_t*) Msg1);
+            break;
+            }
 
         udp_sock_id_t chosen = udp_source_get_socket(n, sel - 1).socket_id;  // numara -> id
         udp_source_remove_listener(chosen);            // id DEÐERLE geçilir (& YOK)
