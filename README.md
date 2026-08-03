@@ -165,7 +165,7 @@ err_t net_if_remove(struct netif *netif);   // cascades sockets, guards the phys
 
 
 
-UDP sockets (UDP_source.h)
+**UDP sockets** (UDP_source.h)
 err_t udp_source_add_listener(struct netif *netif, u16_t port, udp_sock_id_t *id_out);
 void  udp_source_remove_listener(udp_sock_id_t id);
 u8_t  udp_source_poll_rx(udp_sock_id_t id, udp_rx_msg_t *msg);
