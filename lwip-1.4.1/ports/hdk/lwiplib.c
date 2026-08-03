@@ -326,15 +326,22 @@ void lwIPTxIntHandler(unsigned int instNum)
 ** cikislarini paylasacak sekilde netif_list'e ekler.
 ******************************************************************************/
 
-#define MAX_ALIAS_NETIF     3U
+#define MAX_ALIAS_NETIF     7U
 
-static struct netif  hdkAliasNetIF[MAX_ALIAS_NETIF];
-static unsigned int  aliasNetifCount   = 0U;
+typedef struct
+{
+    struct netif netif;
+    u8_t used;
+}alias_list_t;
+
+static alias_list_t alias_list[MAX_ALIAS_NETIF];
+
 static unsigned int  lwIPCoreReady     = 0U;
 /* netif_add() init callback'i SENKRON olarak (netif_add donmeden once)
  * cagirdigi icin bu gecici pointer race condition olusturmaz (NO_SYS /
  * bare-metal, tek thread). */
 static struct netif  *aliasSourceNetif = NULL;
+
 
 /**
  * \brief   Donanimi (MAC adres register yazimi dahil) ve lwIP core'unu
@@ -478,8 +485,16 @@ unsigned int lwIPAliasAdd(unsigned int primaryInstNum, unsigned int ipAddr,
     struct ip_addr gw_addr;
     struct netif  *aliasNetif;
     unsigned int  *ipAddrPtr;
+    u8_t idx;
+    u8_t alias_amount = 0;
 
-    if ((!lwIPCoreReady) || (aliasNetifCount >= MAX_ALIAS_NETIF))
+    for(idx = 0; idx < MAX_ALIAS_NETIF; idx++)
+    {
+        if(1 == alias_list[idx].used)
+            alias_amount++;
+    }
+
+    if ((!lwIPCoreReady) || (alias_amount > MAX_ALIAS_NETIF))
     {
         return 0U;
     }
@@ -488,25 +503,48 @@ unsigned int lwIPAliasAdd(unsigned int primaryInstNum, unsigned int ipAddr,
     net_mask.addr = htonl(netMask);
     gw_addr.addr  = htonl(gwAddr);
 
-    aliasNetif = &hdkAliasNetIF[aliasNetifCount];
-
-    aliasSourceNetif = &hdkNetIF[primaryInstNum];
-
-    if (NULL == netif_add(aliasNetif, &ip_addr, &net_mask, &gw_addr,
-                           NULL, hdkif_alias_init, ip_input))
+    for (idx = 0; idx < MAX_ALIAS_NETIF; idx++)
     {
-        aliasSourceNetif = NULL;
-        return 0U;
+        if (0 == alias_list[idx].used)
+        {
+            aliasNetif = &alias_list[idx].netif;
+            aliasSourceNetif = &hdkNetIF[primaryInstNum];
+
+            if (NULL == netif_add(aliasNetif, &ip_addr, &net_mask, &gw_addr,
+            NULL, hdkif_alias_init, ip_input))
+            {
+                aliasSourceNetif = NULL;
+                return 0U;
+            }
+            aliasSourceNetif = NULL;
+            netif_set_up(aliasNetif);
+            alias_list[idx].used = 1;
+            ipAddrPtr = (unsigned int *)&(aliasNetif->ip_addr);
+            return (*ipAddrPtr);
+        }
     }
-
-    aliasSourceNetif = NULL;
-
-    netif_set_up(aliasNetif);
-    aliasNetifCount++;
-
-    ipAddrPtr = (unsigned int *)&(aliasNetif->ip_addr);
-    return (*ipAddrPtr);
+    return 0U;
 }
+
+void lwIPAliasRemove(struct netif *netif)
+{
+    SYS_ARCH_DECL_PROTECT(lev);
+    u8_t idx;
+    if(NULL == netif) return;
+
+    SYS_ARCH_PROTECT(lev);
+    for(idx = 0; idx < MAX_ALIAS_NETIF; idx++)
+    {
+        if(netif == &alias_list[idx].netif && 1 == alias_list[idx].used)
+        {
+            netif_remove(netif);
+            alias_list[idx].used = 0;
+            break;
+        }
+    }
+    SYS_ARCH_UNPROTECT(lev);
+}
+
 
 struct netif* lwIPNetifPtrGet(unsigned int instNum)
 {
@@ -515,11 +553,11 @@ struct netif* lwIPNetifPtrGet(unsigned int instNum)
 
 struct netif* lwIPAliasNetifPtrGet(unsigned int aliasIdx)
 {
-    if (aliasIdx >= aliasNetifCount)
+    if (aliasIdx >= MAX_ALIAS_NETIF || 0 == alias_list[aliasIdx].used)
     {
         return NULL;
     }
-    return &hdkAliasNetIF[aliasIdx];
+    return &alias_list[aliasIdx].netif;
 }
 
 /***************************** End Of File ***********************************/

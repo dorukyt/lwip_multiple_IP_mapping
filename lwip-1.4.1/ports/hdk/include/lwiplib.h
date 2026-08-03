@@ -100,6 +100,8 @@ extern unsigned int lwIPNetifAdd(unsigned int instNum, unsigned int ipAddr,
 extern unsigned int lwIPAliasAdd(unsigned int primaryInstNum, unsigned int ipAddr,
                                  unsigned int netMask, unsigned int gwAddr);
 
+extern void lwIPAliasRemove(struct netif *netif);
+
 extern struct netif *lwIPNetifPtrGet(unsigned int instNum);
 extern struct netif *lwIPAliasNetifPtrGet(unsigned int aliasIdx);
 

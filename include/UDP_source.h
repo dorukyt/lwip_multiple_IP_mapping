@@ -16,8 +16,10 @@
 #include "lwip/netif.h"
 
 #define UDP_RX_BUF_SIZE 256
+#define UDP_MAX_LISTENERS 16
 
-#define UDP_MAX_LISTENERS 4
+typedef u16_t udp_sock_id_t;
+#define UDP_SOCK_ID_INVALID ((udp_sock_id_t)0xFFFF)
 
 typedef struct
 {
@@ -33,24 +35,38 @@ typedef struct
     struct udp_pcb *pcb;
     struct netif *netif;
     volatile udp_rx_msg_t rx_msg;
-    volatile u32_t rx_count;
-    volatile u32_t rx_drop_count;
+    volatile u32_t rx_count; //ilerleyen zamanlarda ne kadar paketin ulaþýp
+    volatile u32_t rx_drop_count; //ne kadarýn ulaþmadýðýný görmek ve debug için kullanýlabilir
+    u8_t generation_count;
     u8_t in_use;
-}udp_listener_t;
+} udp_listener_t;
 
-u16_t udp_source_get_local_port(u8_t handle);
+typedef struct
+{
+    struct netif *netif;
+    u16_t local_port;
+    udp_sock_id_t socket_id;
+} udp_netif_socket_info_t;
 
-err_t udp_source_renew_ip(u8_t handle, ip_addr_t *new_local_ip);
+u16_t udp_source_get_local_port(udp_sock_id_t socket_id);
 
 void udp_source_netif_ip_changed(struct netif *netif);
 
-err_t udp_source_add_listener(struct netif *netif, u16_t local_port, u8_t *handle_out);
+err_t udp_source_add_listener(struct netif *netif, u16_t local_port,
+                              udp_sock_id_t *socket_id);
 
-u8_t udp_source_poll_rx(u8_t handle, udp_rx_msg_t *msg);
+u8_t udp_source_poll_rx(udp_sock_id_t socket_id, udp_rx_msg_t *msg);
 
-void udp_source_remove_listener(u8_t handle);
+void udp_source_remove_listener(udp_sock_id_t socket_id);
 
-err_t udp_data_send(u8_t handle, struct netif *tx_netif, ip_addr_t *ip_addr_rx,
-                    u16_t port_number, const u8_t *data, u16_t data_len);
+err_t udp_source_data_send(udp_sock_id_t socket_id, struct netif *tx_netif,
+                    ip_addr_t *ip_addr_rx, u16_t port_number, const u8_t *data,
+                    u16_t data_len);
+
+void udp_source_remove_all_on_netif(struct netif *netif);
+
+u8_t udp_source_count_sockets(struct netif *netif);
+
+udp_netif_socket_info_t udp_source_get_socket(struct netif *netif, u8_t nth);
 
 #endif /* INCLUDE_UDP_SOURCE_H_ */
