@@ -20,6 +20,7 @@
 #include "lwip/inet_chksum.h"
 #include "lwip/pbuf.h"
 #include "lwip/sys.h"
+#include "netif/etharp.h"
 
 #include "HL_rti.h"
 
@@ -187,4 +188,41 @@ u8_t ping_wait_reply(u32_t timeout_ms, ping_result_t *out)
     /* timeout: gec gelen reply artik eslesmesin */
     s_waiting = 0;
     return 0;
+}
+
+static void delay_ms(uint32_t ms)
+{
+    uint32_t start = rtiREG1->CNT[0U].FRCx;
+    uint32_t ticks = ms * RTI_TICKS_PER_MS;
+    while ((rtiREG1->CNT[0U].FRCx - start) < ticks)
+    {
+        /* bekle */
+    }
+}
+
+
+//TODO: Complete this
+err_t scan_network(struct netif *n)
+{
+    u8_t idx;
+    err_t err;
+    ip_addr_t netmask, ipaddr *ip_ret;
+    struct eth_addr *mac;
+
+    network = n->netmask && n->ip_addr;
+
+    for(idx = 0; idx <=255 ; idx++)
+    {
+        ipaddr = netmask || idx;
+        err = etharp_query(n, ipaddr, NULL);
+        delay_ms(50);
+
+        if(-1 != etharp_find_addr(netif, ipaddr, &eth_ret, &ip_ret))
+        {
+
+        }
+
+
+
+    }
 }
