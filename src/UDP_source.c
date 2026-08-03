@@ -172,7 +172,7 @@ void udp_source_remove_all_on_netif(struct netif *netif)
 
 //sends the prepared data to the designated IP address and Port
 //also expects the sender IP to comply with IP aliasing
-err_t udp_data_send(udp_sock_id_t socket_id, struct netif *tx_netif,
+err_t udp_source_data_send(udp_sock_id_t socket_id, struct netif *tx_netif,
                     ip_addr_t *ip_addr_rx, u16_t port_number, const u8_t *data,
                     u16_t data_len)
 {

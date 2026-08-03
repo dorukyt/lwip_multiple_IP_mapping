@@ -59,7 +59,7 @@ u8_t udp_source_poll_rx(udp_sock_id_t socket_id, udp_rx_msg_t *msg);
 
 void udp_source_remove_listener(udp_sock_id_t socket_id);
 
-err_t udp_data_send(udp_sock_id_t socket_id, struct netif *tx_netif,
+err_t udp_source_data_send(udp_sock_id_t socket_id, struct netif *tx_netif,
                     ip_addr_t *ip_addr_rx, u16_t port_number, const u8_t *data,
                     u16_t data_len);
 

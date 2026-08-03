@@ -52,7 +52,6 @@ dest_node_t *dest_list_add(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 
 void read_terminal_line(void)
 {
-    uint32_t idx = 0;
     uint8_t ch;
 
     while (sciIsRxReady(sciREGx))
@@ -75,7 +74,9 @@ void read_terminal_line(void)
     const char Msg_5[] = "5. Delete network interface\r\n";
     const char Msg_6[] = "6. Open Socket\r\n";
     const char Msg_7[] = "7. Delete Socket\r\n";
-    const char Msg_8[] = "8. List Netif's\r\n";
+    const char Msg_8[] = "8. UDP Data Send\r\n";
+    const char Msg_9[] = "9. List Netif's\r\n";
+
     sciSend(sciREGx, sizeof(MsgMain) - 1, (uint8_t*) MsgMain);
     sciSend(sciREGx, sizeof(Msg_1) - 1, (uint8_t*) Msg_1);
     sciSend(sciREGx, sizeof(Msg_2) - 1, (uint8_t*) Msg_2);
@@ -85,6 +86,7 @@ void read_terminal_line(void)
     sciSend(sciREGx, sizeof(Msg_6) - 1, (uint8_t*) Msg_6);
     sciSend(sciREGx, sizeof(Msg_7) - 1, (uint8_t*) Msg_7);
     sciSend(sciREGx, sizeof(Msg_8) - 1, (uint8_t*) Msg_8);
+    sciSend(sciREGx, sizeof(Msg_9) - 1, (uint8_t*) Msg_9);
     sciSendByte(sciREGx, '\r');
     sciSendByte(sciREGx, '\n');
 
@@ -96,6 +98,8 @@ void read_terminal_line(void)
     switch (ch)
     {
 
+    //Netif configuration interface
+    //Lets the user change IP, Netmask and GW addresses
     case '1':
     {
         ip_addr_t new_ip;
@@ -124,9 +128,10 @@ void read_terminal_line(void)
         sciSendByte(sciREGx, '\r');
         sciSendByte(sciREGx, '\n');
 
-        //TODO: Burayý düzelt, kod doðru ama break yapýsýný düzenle
+
         switch (ch)
         {
+
         //change IP
         case '1':
         {
@@ -142,7 +147,8 @@ void read_terminal_line(void)
             udp_source_netif_ip_changed(n);
             break;
         }
-            //Change NetMask
+
+        //Change NetMask
         case '2':
         {
             ip_addr_t new_netmask;
@@ -156,7 +162,7 @@ void read_terminal_line(void)
             }
             break;
         }
-            //change GW
+        //change GW
         case '3':
         {
             ip_addr_t new_gw;
@@ -170,6 +176,7 @@ void read_terminal_line(void)
             }
             break;
         }
+
         default:
         {
             const char Msg[] = "Invalid Key... Exiting";
@@ -185,7 +192,8 @@ void read_terminal_line(void)
     }
 
 
-
+    //Resets the ARP table for all the netifs
+    //Recommended after receiver changes their Ip addresses
     case '2':
     {
         // code block
@@ -201,6 +209,7 @@ void read_terminal_line(void)
     }
         break;
 
+    //Sends a ICMP echo request to the IP address user has written
     case '3':
     {
         const char Msg[] = "Please chose which netif you want to ping from:";
@@ -283,6 +292,7 @@ void read_terminal_line(void)
         break;
     }
 
+    //Adds a new netif interface with IP, Netmask and GW
     case '4':
     {
         // code block
@@ -331,6 +341,8 @@ void read_terminal_line(void)
         break;
     }
 
+    //Deletes the chosen netif
+    //Deletes all of its sockets as well
     case '5':
     {
         // code block
@@ -356,19 +368,13 @@ void read_terminal_line(void)
         break;
     }
 
+    //Adds a UDP socket with written port number to the chosen netif
     case '6':
     {
         // code block
-
-
-        uint8_t i = 1;
-        uint8_t j;
         u16_t socket_port;
         udp_sock_id_t new_id;
-        int len;
         struct netif *n;
-        char ip_str[16];
-        char line[96];
 
         char Msg0[] = "Please chose the interface you want to add socket to\r\n\n";
         sciSend(sciREGx, sizeof(Msg0) - 1, (uint8_t*) Msg0);
@@ -396,17 +402,14 @@ void read_terminal_line(void)
         break;
     }
 
+    //Deletes the selected UDP socket from a netif
     case '7':
     {
         // code block
-
-        uint8_t i = 1;
         uint8_t j;
-        u8_t count = 0;
         u16_t socket_port;
         int len;
         struct netif *n;
-        char ip_str[16];
         char line[96];
 
         char Msg0[] =
@@ -425,7 +428,6 @@ void read_terminal_line(void)
             break;
         }
 
-        count = 0;
         char Msg1[] = "Select which socket you want to delete:\r\n";
         sciSend(sciREGx, sizeof(Msg1) - 1, (uint8_t*) Msg1);
 
@@ -455,7 +457,97 @@ void read_terminal_line(void)
         break;
     }
 
+    //Send a UDP message of max length CMD_BUFFER_SIZE(32 byte)
     case '8':
+    {
+        uint8_t j;
+        int len;
+        struct netif *n;
+        char line[96];
+
+        char msg_netif[] ="Select the sender interface:\r\n\n";
+        sciSend(sciREGx, sizeof(msg_netif) - 1, (uint8_t*) msg_netif);
+
+        n = terminal_select_netif();
+        if(NULL == n) break;
+
+        char msg_port[] ="Chose the sending port\r\n";
+        sciSend(sciREGx, sizeof(msg_port) - 1, (uint8_t*) msg_port);
+
+        for (j = 0; j < udp_source_count_sockets(n); j++)
+        {
+            u16_t socket_port = udp_source_get_socket(n, j).local_port;
+            len = sprintf(line, "%d.socket(local_port): %u\r\n", j + 1, socket_port);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+        }
+
+        fetch_input(cmd_buf, CMD_BUFFER_SIZE);
+        uint32_t sel = (uint32_t) atoi((const char*) cmd_buf); // 1 tabanlý seçim
+
+        if (sel < 1 || sel > udp_source_count_sockets(n))
+        {
+            char Msg1[] = "Invalid Socket. Procedure not completed\r\n";
+            sciSend(sciREGx, sizeof(Msg1) - 1, (uint8_t*) Msg1);
+            break;
+        }
+        udp_netif_socket_info_t socket = udp_source_get_socket(n, sel - 1);
+
+        char Msg0[] ="Type the receiver IP address and port(192.168.0.1/5000): \r\n\n";
+        sciSend(sciREGx, sizeof(Msg0) - 1, (uint8_t*) Msg0);
+
+        fetch_input(cmd_buf, CMD_BUFFER_SIZE);
+
+        // cmd_buf = "192.168.0.1/5000"
+        char *sep = strchr((char*) cmd_buf, '/');   // '/' konumunu bul
+        if (sep == NULL)
+        {
+            // "Invalid format (expected IP/port)" , hata
+            char Msg1[] = "Invalid format, expected IP/port\r\n";
+            sciSend(sciREGx, sizeof(Msg1) - 1, (uint8_t*) Msg1);
+            break;   // ya da uygun þekilde çýk
+        }
+
+        *sep = '\0';                        // '/' yerine null koy , string'i ikiye böl
+        char *ip_str   = (char*) cmd_buf;   // "192.168.0.1"  (null'a kadar)
+        char *port_str = sep + 1;           // "5000"         ('/'den sonrasý)
+
+        ip_addr_t ip_rx;
+        if (!ipaddr_aton(ip_str, &ip_rx))
+        {
+            // "Invalid IP" , hata
+            char Msg1[] = "Invalid IP\r\n";
+            sciSend(sciREGx, sizeof(Msg1) - 1, (uint8_t*) Msg1);
+            break;
+        }
+
+        u16_t port = (u16_t) atoi(port_str);
+        if (port == 0)                      // atoi 0 = geçersiz/sayý deðil
+        {
+            // "Invalid port" , hata
+            char Msg1[] = "Invalid Port\r\n";
+            sciSend(sciREGx, sizeof(Msg1) - 1, (uint8_t*) Msg1);
+            break;
+        }
+
+        char msg_data[] ="Enter the message: \r\n";
+        sciSend(sciREGx, sizeof(msg_data) - 1, (uint8_t*) msg_data);
+
+        fetch_input(cmd_buf, CMD_BUFFER_SIZE);
+
+        if(ERR_OK != udp_source_data_send(socket.socket_id, socket.netif , &ip_rx, port, cmd_buf, (u16_t) strlen((char*) cmd_buf)))
+        {
+            char msg_fail[] ="Failed to send message\r\n";
+            sciSend(sciREGx, sizeof(msg_fail) - 1, (uint8_t*) msg_fail);
+            break;
+        }
+
+        char msg_success[] = "Message successfully sent\r\n";
+        sciSend(sciREGx, sizeof(msg_success) - 1, (uint8_t*) msg_success);
+        break;
+    }
+
+    //lists all the active netifs we have
+    case '9':
     {
         terminal_list_netif();
         break;
@@ -473,6 +565,8 @@ void read_terminal_line(void)
     return;
 }
 
+//reads the serial terminal line input and stores it inside the buffer
+//default buffer is cmd_buf
 void fetch_input(uint8_t *buf, uint32_t max_len)
 {
     uint32_t idx = 0;
@@ -519,6 +613,8 @@ void fetch_input(uint8_t *buf, uint32_t max_len)
 
 //IMPORTANT: Check for NULL == n when using
 //funciton returns NULL if user gives a wrong value
+//lists all active netifs with their index number and returns the netif as a pointer value
+//after user selects the index
 static struct netif* terminal_select_netif(void)
 {
 
@@ -600,6 +696,7 @@ static struct netif* terminal_select_netif(void)
     return n;
 }
 
+//lists all the active netifs in the serial terminal
 static void terminal_list_netif(void)
 {
 
