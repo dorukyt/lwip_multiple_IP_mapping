@@ -12,6 +12,7 @@
  *     calismaya devam eder).
  * Zaman: RTI FRC0 (9.375 MHz) ile RTT olcumu ve timeout beklemesi.
  */
+#include <stdio.h>
 
 #include "lwip/opt.h"
 #include "lwip/raw.h"
@@ -21,11 +22,14 @@
 #include "lwip/pbuf.h"
 #include "lwip/sys.h"
 #include "netif/etharp.h"
+#include "lwip/ip_addr.h"
 
+#include "HL_sci.h"
 #include "HL_rti.h"
 
 #include "ping.h"
 
+#define sciREGx sciREG1
 /* RTI FRC0: 9.375 MHz -> 9375 tick = 1 ms
  * (HL_notification.c debounce: 1406250 tick ~= 150 ms ile tutarli) */
 #define PING_RTI_TICKS_PER_MS  9375U
@@ -41,6 +45,16 @@ static volatile u8_t s_waiting = 0;
 static volatile u8_t s_reply_valid = 0;
 static volatile u32_t s_send_tick = 0;
 static volatile ping_result_t s_result;
+
+static void delay_ms(uint32_t ms)
+{
+    uint32_t start = rtiREG1->CNT[0U].FRCx;
+    uint32_t ticks = ms * PING_RTI_TICKS_PER_MS;
+    while ((rtiREG1->CNT[0U].FRCx - start) < ticks)
+    {
+        /* bekle */
+    }
+}
 
 /* ISR baglaminda calisir: raw pcb'ye gelen her ICMP paketi buradan gecer.
  * pbuf IP header ile birlikte gelir. return 1 = paket bizim, tuketildi;
@@ -190,39 +204,44 @@ u8_t ping_wait_reply(u32_t timeout_ms, ping_result_t *out)
     return 0;
 }
 
-static void delay_ms(uint32_t ms)
-{
-    uint32_t start = rtiREG1->CNT[0U].FRCx;
-    uint32_t ticks = ms * RTI_TICKS_PER_MS;
-    while ((rtiREG1->CNT[0U].FRCx - start) < ticks)
-    {
-        /* bekle */
-    }
-}
-
-
 //TODO: Complete this
 err_t scan_network(struct netif *n)
 {
-    u8_t idx;
-    err_t err;
-    ip_addr_t netmask, ipaddr *ip_ret;
-    struct eth_addr *mac;
+    ip_addr_t target;
+    ip_addr_t *ip_ret;
+    ip_addr_t network;
+    int len;
+    int idx;
+    struct eth_addr *eth_ret;
+    char ip_str[16];
+    char line[96];
 
-    network = n->netmask && n->ip_addr;
+    if(NULL == n) return ERR_VAL;
 
-    for(idx = 0; idx <=255 ; idx++)
+    network.addr = (n->netmask.addr) & (n->ip_addr.addr);
+
+    for(idx = 0; idx <= 255 ; idx++)
     {
-        ipaddr = netmask || idx;
-        err = etharp_query(n, ipaddr, NULL);
+        if (idx == (int)(ntohl(n->ip_addr.addr) & 0xFF) || idx == 0 || idx == 255) continue;
+
+        target.addr = htonl(ntohl(network.addr) | (u32_t)idx);
+        etharp_query(n, &target, NULL);
         delay_ms(50);
 
-        if(-1 != etharp_find_addr(netif, ipaddr, &eth_ret, &ip_ret))
+        if(-1 != etharp_find_addr(n, &target, &eth_ret, &ip_ret))
         {
-
+            ipaddr_ntoa_r(&target, ip_str, sizeof(ip_str));
+            len = sprintf(line, "Host up: %s  MAC %02x:%02x:%02x:%02x:%02x:%02x\r\n",
+                          ip_str,
+                          eth_ret->addr[0], eth_ret->addr[1], eth_ret->addr[2],
+                          eth_ret->addr[3], eth_ret->addr[4], eth_ret->addr[5]);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
         }
-
-
-
+        if(idx % 10 == 0)
+        {
+            etharp_cleanup_netif(n);
+        }
     }
+    return ERR_OK;
+
 }

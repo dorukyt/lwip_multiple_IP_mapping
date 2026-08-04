@@ -87,13 +87,8 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 {
     //uint8_t 		testChar;
     struct in_addr 	devIPAddress;
-    struct in_addr 	devIPAddress2;
     unsigned int	anaIpAddr;
-    unsigned int	sanalIpAddr;
-    char str_anaIp[16]   = {0};
-    char str_sanalIp[16] = {0};
 
-    ip_addr_t temp_ip;
     /* --- Statik IP tanimlari ---
      * ip_ana : cihazin birincil (default route'un ciktigi) adresi
      * ip_sanal: ayni fiziksel EMAC + ayni MAC uzerinde ikinci (alias) IP
@@ -102,23 +97,10 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
     uint8_t netmask_ana[4] = { 255, 255, 255, 0 };
     uint8_t gateway_ana[4] = { 10, 0, 0, 1 };
 
-    uint8_t ip_sanal[4]      = { 11, 0, 0, 11 };
-    uint8_t netmask_sanal[4] = { 255, 255, 255, 0 };
-    uint8_t gateway_sanal[4] = { 11, 0, 0, 1 };
 
     //TODO:
     //Create a linked list design for destination IP addresses to be later used for
     //selecting, adding, deleting and changing the dest addresses
-
-    ip_addr_t dest;
-    IP4_ADDR(&dest, 12, 0, 0, 100);
-
-    dest_list_add(12, 0, 0, 100);
-    dest_list_add(20, 0, 0, 20);
-
-    //TODO:Gönderimde dinamik sisteme geçilince, aþaðýdaki kod silinecek
-    const char *main_message = "Hello from 10.0.0.10";
-    const char *alias_message = "Hello from 11.0.0.11";
 
 	sciInit();
 
@@ -166,20 +148,6 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 		return;
 	}
 
-	//TODO:Dinamik sisteme geçildi, aþaðýdaki kod silinecek
-	/* 3) Sanal (alias) IP: donanima dokunmaz, sadece netif_list'e
-	 *    yeni bir dugum ekler; TX cikisi birincil netif ile paylasilir. */
-	sanalIpAddr = lwIPAliasAdd(0,
-		*((uint32_t *)ip_sanal),
-		*((uint32_t *)netmask_sanal),
-		*((uint32_t *)gateway_sanal));
-
-	if (0 == sanalIpAddr)
-	{
-		sciDisplayText(sciREGx, (uint8_t*)"UYARI: Sanal IP eklenemedi, ana IP ile devam ediliyor", 54);
-		sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-	}
-
 	struct netif *g_main_netif  = lwIPNetifPtrGet(0);
 	struct netif *g_alias_netif = lwIPAliasNetifPtrGet(0);
 
@@ -189,62 +157,12 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 	devIPAddress.s_addr = anaIpAddr;
 	txtIPAddrItoA = (uint8_t *)inet_ntoa(devIPAddress);
 
-	if (sanalIpAddr != 0)
-	{
-		devIPAddress2.s_addr = sanalIpAddr;
-		txtIPAddrItoA2 = (uint8_t *)inet_ntoa(devIPAddress2);
-	}
-
 	LocatorConfig(macAddress, "HDK enet_lwip (dual-ip)");
 
 	//sciDisplayText(sciREGx, (uint8_t*)"Starting Web Server", sizeof("Starting Web Server"));
 	//httpd_init();
 	sciDisplayText(sciREGx, (uint8_t*)"..DONE", sizeof("..DONE"));
 	sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-
-#if 0
-	//TODO:Dinamik sisteme geçildi, aþaðýdaki kod silinecek
-	udp_sock_id_t h_main;
-	udp_sock_id_t h_alias;
-
-	if (udp_source_add_listener(g_main_netif, 4000, &h_main) == ERR_OK)
-    {
-        char ip_str[16];
-        ipaddr_ntoa_r(&g_main_netif->ip_addr, ip_str, sizeof(ip_str));
-
-        char msg[64];
-        int msg_len = snprintf(msg, sizeof(msg),
-                               "\r\nUDP Source '%s' init OK (port %u)",
-                               ip_str, (unsigned) udp_source_get_local_port(h_main));
-        sciDisplayText(sciREGx, (uint8_t*) msg, (uint32_t) msg_len);
-        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-    }
-    else
-    {
-        sciDisplayText(sciREGx, (uint8_t*) "\r\nUDP App init FAILED!", 22);
-        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-    }
-
-    if (udp_source_add_listener(g_alias_netif, 3000, &h_alias) == ERR_OK)
-    {
-        char ip_str[16];
-        ipaddr_ntoa_r(&g_alias_netif->ip_addr, ip_str, sizeof(ip_str));
-
-        char msg[64];
-        int msg_len = snprintf(msg, sizeof(msg),
-                               "\r\nUDP Source '%s' init OK (port %u)",
-                               ip_str, (unsigned) udp_source_get_local_port(h_alias));
-        sciDisplayText(sciREGx, (uint8_t*) msg, (uint32_t) msg_len);
-        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-    }
-    else
-    {
-        sciDisplayText(sciREGx, (uint8_t*) "\r\nUDP App Alias init FAILED!", 28);
-        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-    }
-#endif
-
-
 
     sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
 
@@ -264,47 +182,8 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
 #endif
 
     /* --- Read the current IP address from the structures and write them in the terminal --- */
-    {
-        char ip_line[16];
-
-        /* Ana IP: her zaman g_main_netif->ip_addr'dan okunur (canli deger) */
-        sciDisplayText(sciREGx, txtIPAddrTxt, sizeof(txtIPAddrTxt));
-        ipaddr_ntoa_r(&g_main_netif->ip_addr, ip_line, sizeof(ip_line));
-        sciDisplayText(sciREGx, (uint8_t*) ip_line, (uint32_t) strlen(ip_line));
-        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-
-        sciDisplayText(sciREGx, txtIPAddrTxt3, sizeof(txtIPAddrTxt3));
-        ipaddr_ntoa_r(&dest_list_head->dest_addr, ip_line, sizeof(ip_line));
-        sciDisplayText(sciREGx, (uint8_t*) ip_line, (uint32_t) strlen(ip_line));
-        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-
-        /* Sanal IP: alias netif varsa canli degerini oku */
-        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-        sciDisplayText(sciREGx, txtIPAddrTxt2, sizeof(txtIPAddrTxt2));
-        if (g_alias_netif != NULL)
-        {
-            ipaddr_ntoa_r(&g_alias_netif->ip_addr, ip_line, sizeof(ip_line));
-            sciDisplayText(sciREGx, (uint8_t*) ip_line, (uint32_t) strlen(ip_line));
-        }
-        else
-        {
-            sciDisplayText(sciREGx, (uint8_t*) "(yok)", 5);
-        }
-        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-
-        /* Alici (dest) IP: linked list'in ilk elemanindan oku */
-        if (dest_list_head != NULL)
-        {
-            sciDisplayText(sciREGx, txtIPAddrTxt3, sizeof(txtIPAddrTxt3));
-            ipaddr_ntoa_r(&dest_list_head->next->dest_addr, ip_line, sizeof(ip_line));
-            sciDisplayText(sciREGx, (uint8_t*) ip_line, (uint32_t) strlen(ip_line));
-        }
-        else
-        {
-            sciDisplayText(sciREGx, (uint8_t*) "(yok)", 5);
-        }
-        sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
-    }
+    sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
+    terminal_list_netif();
 
     /* Loop forever.  All the work is done in interrupt handlers. */
     while (1)

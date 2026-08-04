@@ -34,6 +34,6 @@ void fetch_input(uint8_t *buf, uint32_t max_len);
 
 static struct netif* terminal_select_netif(void);
 
-static void terminal_list_netif(void);
+void terminal_list_netif(void);
 
 #endif /* INCLUDE_TERMINAL_INTERFACE_H_ */
