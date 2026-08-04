@@ -19,8 +19,10 @@
 #include "ping.h"
 #include "net_manager.h"
 #include "string.h"
+#include "HL_rti.h"
 
 #define sciREGx sciREG1
+#define TERM_CTRLC 0x03
 uint8_t cmd_buf[CMD_BUFFER_SIZE];
 
 static dest_node_t dest_pool[MAX_DEST];
@@ -86,16 +88,32 @@ void read_terminal_line(void)
     sciSendByte(sciREGx, '\r');
     sciSendByte(sciREGx, '\n');
 
-    sciReceive(sciREGx, 1, &ch);
-    sciSendByte(sciREGx, ch);
-    sciSendByte(sciREGx, '\r');
-    sciSendByte(sciREGx, '\n');
+    fetch_input(cmd_buf, CMD_BUFFER_SIZE);          // tüm satýrý oku (echo + Enter zaten fetch_input'ta)
 
-    switch (ch)
+    /* --- komut ayrýþtýrma: "ping <IP>" --- */
+    if (strncmp((const char*) cmd_buf, "ping ", 5) == 0)
+    {
+        terminal_ping_command((const char*) (cmd_buf + 5));   // "ping " sonrasý = IP
+        return;
+    }
+
+    /* boþ satýr -> yoksay */
+    if (cmd_buf[0] == '\0') return;
+
+    /* rakamla baþlamýyorsa -> bilinmeyen komut */
+    if (cmd_buf[0] < '0' || cmd_buf[0] > '9')
+    {
+        const char Err[] = "Unknown command\r\n";
+        sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
+        return;
+    }
+
+    int sel = atoi((const char*) cmd_buf);   /* TÜM satýr -> sayý (çok haneli) */
+    switch (sel)
     {
 
     //lists all the active netifs we have
-    case '1':
+    case 1:
     {
         terminal_list_netif();
         break;
@@ -104,7 +122,7 @@ void read_terminal_line(void)
     //Netif configuration interface
     //Lets the user change IP, Netmask and GW addresses
     //Add or delete  UDP sockets
-    case '2':
+    case 2:
     {
         ip_addr_t new_ip;
         int len;
@@ -293,7 +311,7 @@ void read_terminal_line(void)
 
     }
 
-    case '3':
+    case 3:
     {
 
 
@@ -405,7 +423,7 @@ void read_terminal_line(void)
     }
 
     //Send a UDP message of max length CMD_BUFFER_SIZE(32 byte)
-    case '4':
+    case 4:
     {
         uint8_t j;
         int len;
@@ -502,7 +520,7 @@ void read_terminal_line(void)
 
 
     //Sends a ICMP echo request to the IP address user has written
-    case '5':
+    case 5:
     {
         const char Msg[] = "Please chose which netif you want to ping from:";
         sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
@@ -586,7 +604,7 @@ void read_terminal_line(void)
 
     //Resets the ARP table for all the netifs
     //Recommended after receiver changes their Ip addresses
-    case '6':
+    case 6:
     {
         // code block
         struct netif *n;
@@ -601,8 +619,8 @@ void read_terminal_line(void)
     }
         break;
 
-    //Scans the whole network for open Ip interfaces
-    case '7':
+    //Scans the whole network for open IP interfaces
+    case 7:
     {
         struct netif *n;
 
@@ -637,23 +655,24 @@ void read_terminal_line(void)
     return;
 }
 
+
+
 //reads the serial terminal line input and stores it inside the buffer
 //default buffer is cmd_buf
 void fetch_input(uint8_t *buf, uint32_t max_len)
 {
-    uint32_t idx = 0;
-    uint8_t ch;
+    uint32_t len = 0;   // buf'taki karakter sayýsý
+    uint32_t pos = 0;   // imleç konumu (0..len)
+    uint32_t i;
+    uint8_t  ch;
 
-    while (sciIsRxReady(sciREGx))
-    {
-        (void) sciReceiveByte(sciREGx);
-    }
+    while (sciIsRxReady(sciREGx)) { (void) sciReceiveByte(sciREGx); }  // bekleyenleri temizle
 
-    while (idx < max_len - 1)
+    for (;;)
     {
         sciReceive(sciREGx, 1, &ch);
 
-        //break if enter pressed
+        /* --- Enter: bitir --- */
         if (ch == '\r' || ch == '\n')
         {
             sciSendByte(sciREGx, '\r');
@@ -661,26 +680,73 @@ void fetch_input(uint8_t *buf, uint32_t max_len)
             break;
         }
 
-        //delete from buffer if backspace
-        //do nothing if the buffer is empty
-        else if (ch == '\x7f' || ch == '\x08')
+        /* --- Backspace: imleçten ÖNCEKÝ karakteri sil --- */
+        else if (ch == 0x7F || ch == 0x08)
         {
-            if (idx > 0)
+            if (pos > 0)
             {
-                sciSendByte(sciREGx, '\b');
-                sciSendByte(sciREGx, ' ');
-                sciSendByte(sciREGx, '\b');
-                buf[--idx] = '\0';
+                for (i = pos - 1; i < len - 1; i++) buf[i] = buf[i + 1];  // sola kaydýr
+                len--; pos--;
+
+                sciSendByte(sciREGx, '\b');                      // imleci sola al
+                sciSend(sciREGx, 3, (uint8_t*) "\x1b[K");        // satýr sonuna kadar sil
+                if (len > pos) sciSend(sciREGx, len - pos, &buf[pos]);   // kuyruðu yeniden yaz
+                for (i = 0; i < len - pos; i++) sciSendByte(sciREGx, '\b');  // imleci geri getir
             }
         }
-        else
+
+        /* --- ESC: ok tuþlarý / Delete --- */
+        else if (ch == 0x1B)
         {
-            sciSendByte(sciREGx, ch);
-            buf[idx++] = ch;
+            uint8_t seq;
+            sciReceive(sciREGx, 1, &seq);            // '['
+            if (seq == '[')
+            {
+                sciReceive(sciREGx, 1, &seq);        // yön/eylem baytý
+
+                if (seq == 'D' && pos > 0)           // SOL ok
+                {
+                    pos--; sciSendByte(sciREGx, '\b');
+                }
+                else if (seq == 'C' && pos < len)    // SAÐ ok
+                {
+                    pos++; sciSend(sciREGx, 3, (uint8_t*) "\x1b[C");
+                }
+                else if (seq == '3')                 // Delete: ESC [ 3 ~
+                {
+                    sciReceive(sciREGx, 1, &seq);    // '~' yut
+                    if (pos < len)
+                    {
+                        for (i = pos; i < len - 1; i++) buf[i] = buf[i + 1];
+                        len--;
+                        sciSend(sciREGx, 3, (uint8_t*) "\x1b[K");
+                        if (len > pos) sciSend(sciREGx, len - pos, &buf[pos]);
+                        for (i = 0; i < len - pos; i++) sciSendByte(sciREGx, '\b');
+                    }
+                }
+                else if (seq >= '0' && seq <= '9')   // Home/End vb (n~) -> '~' yut, yoksay
+                {
+                    sciReceive(sciREGx, 1, &seq);
+                }
+                /* 'A'/'B' (yukarý/aþaðý) ve diðerleri: yoksay */
+            }
         }
+
+        /* --- Yazdýrýlabilir karakter: imleç konumuna EKLE --- */
+        else if (len < max_len - 1)
+        {
+            for (i = len; i > pos; i--) buf[i] = buf[i - 1];   // saða kaydýr
+            buf[pos] = ch;
+            len++;
+
+            sciSend(sciREGx, len - pos, &buf[pos]);            // yeni karakter + kuyruk
+            pos++;
+            for (i = 0; i < len - pos; i++) sciSendByte(sciREGx, '\b');  // ekleme sonrasýna dön
+        }
+        /* buffer dolu -> yoksay */
     }
-    buf[idx] = '\0';
-    return;
+
+    buf[len] = '\0';
 }
 
 //IMPORTANT: Check for NULL == n when using
@@ -828,4 +894,134 @@ void terminal_list_netif(void)
         sciSend(sciREGx, sizeof(Spacer) - 1, (uint8_t*) Spacer);
     }
     return;
+}
+
+// ms kadar bekler; bu sýrada Ctrl+C (0x03) gelirse 1 döner (erken çýkýþ), yoksa 0.
+static uint8_t wait_or_ctrlc(uint32_t ms)
+{
+    uint32_t start = rtiREG1->CNT[0U].FRCx;
+    uint32_t ticks = ms * 9375U;   // RTI FRC0: 9.375 MHz -> 9375 tik/ms
+    uint8_t  c;
+    while ((rtiREG1->CNT[0U].FRCx - start) < ticks)
+    {
+        if (sciIsRxReady(sciREGx))
+        {
+            c = sciReceiveByte(sciREGx);
+            if (c == TERM_CTRLC) return 1;
+        }
+    }
+    return 0;
+}
+
+// "ping <IP>" komutunun gövdesi: IP string'ini alýr, kaynak netif seçtirir,
+// PING_ATTEMPT_COUNT kez ping atar ve sonunda istatistik basar.
+static void terminal_ping_command(const char *arg)
+{
+    struct netif *n;
+    ip_addr_t target;
+    char argbuf[32];
+    char line[96];
+    char tgt_str[16];
+    int  len;
+    int  attempt;
+    uint8_t continuous = 0;
+    char *sp;
+
+    int   sent = 0, recv = 0;
+    u32_t rtt_min = 0xFFFFFFFFu, rtt_max = 0, rtt_sum = 0;
+
+    /* argümaný yerel tampona kopyala (üzerinde oynayacaðýz) */
+    strncpy(argbuf, arg, sizeof(argbuf) - 1);
+    argbuf[sizeof(argbuf) - 1] = '\0';
+
+    /* "-t" bayraðý var mý? (kesmeden ÖNCE ara) */
+    if (strstr(argbuf, "-t") != NULL) continuous = 1;
+
+    /* IP'yi ilk boþlukta kes -> argbuf sadece IP kalsýn */
+    sp = strchr(argbuf, ' ');
+    if (sp != NULL) *sp = '\0';
+
+    if (!ipaddr_aton(argbuf, &target))
+    {
+        const char Err[] = "Invalid IP address\r\n";
+        sciSend(sciREGx, sizeof(Err) - 1, (uint8_t*) Err);
+        return;
+    }
+
+    const char MsgSel[] = "Choose netif to send ping from:\r\n";
+    sciSend(sciREGx, sizeof(MsgSel) - 1, (uint8_t*) MsgSel);
+    n = terminal_select_netif();
+    if (n == NULL) return;
+
+    ipaddr_ntoa_r(&target, tgt_str, sizeof(tgt_str));
+    if (continuous)
+        len = snprintf(line, sizeof(line), "\r\nPinging %s (Ctrl+C to stop):\r\n", tgt_str);
+    else
+        len = snprintf(line, sizeof(line), "\r\nPinging %s:\r\n", tgt_str);
+    sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+    /* continuous ise sonsuz, deðilse PING_ATTEMPT_COUNT kez */
+    for (attempt = 0; continuous || attempt < PING_ATTEMPT_COUNT; attempt++)
+    {
+        ping_result_t res;
+        err_t perr;
+
+        sent++;
+        perr = ping_send(n, &target);
+        if (perr != ERR_OK)
+        {
+            len = snprintf(line, sizeof(line), "Ping send err: %d\r\n", (int) perr);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+        }
+        else if (ping_wait_reply(PING_TIMEOUT_MS, &res))
+        {
+            char from_str[16];
+            recv++;
+            rtt_sum += res.rtt_ms;
+            if (res.rtt_ms < rtt_min) rtt_min = res.rtt_ms;
+            if (res.rtt_ms > rtt_max) rtt_max = res.rtt_ms;
+
+            ipaddr_ntoa_r(&res.from, from_str, sizeof(from_str));
+            len = snprintf(line, sizeof(line),
+                    "Reply from %s: seq=%u bytes=%u time=%lums TTL=%u\r\n",
+                    from_str, (unsigned) res.seqno, (unsigned) res.data_len,
+                    (unsigned long) res.rtt_ms, (unsigned) res.ttl);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+        }
+        else
+        {
+            const char Tmo[] = "Request timed out\r\n";
+            sciSend(sciREGx, sizeof(Tmo) - 1, (uint8_t*) Tmo);
+        }
+
+        /* sürekli modda: ~1 sn beklerken Ctrl+C'yi de dinle */
+        if (continuous)
+        {
+            if (wait_or_ctrlc(1000)) break;   // Ctrl+C -> döngüden çýk
+        }
+    }
+
+    /* istatistikler (her iki modda da) */
+    {
+        int loss = (sent > 0) ? ((sent - recv) * 100 / sent) : 0;
+
+        len = snprintf(line, sizeof(line),
+                "\r\n--- %s ping statistics ---\r\n", tgt_str);
+        sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+        len = snprintf(line, sizeof(line),
+                "%d transmitted, %d received, %d%% packet loss\r\n",
+                sent, recv, loss);
+        sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+        if (recv > 0)
+        {
+            len = snprintf(line, sizeof(line),
+                    "rtt min/avg/max = %lu/%lu/%lu ms\r\n",
+                    (unsigned long) rtt_min,
+                    (unsigned long) (rtt_sum / recv),
+                    (unsigned long) rtt_max);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+        }
+    }
 }

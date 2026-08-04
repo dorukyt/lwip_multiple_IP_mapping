@@ -238,43 +238,17 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
             }
         }
 
-
-        //TODO: aşağıdaki gönderim yapısı dinamikleştirilecek
-#if 0
-        if (1 == send_main_flag)
+        /* 'q' seri porttan gelince menüyü aç ('sciIsRxReady' guard'ı ile bloklamaz) */
+        if (sciIsRxReady(sciREGx))
         {
-            send_main_flag = 0;
-            err_t send_err = udp_data_send(h_main, g_main_netif, &dest_list_head->dest_addr, 5000,
-                                           (const u8_t*) main_message,
-                                           (u16_t) strlen(main_message));
-
-            if (send_err != ERR_OK)
+            uint8_t key = (uint8_t) sciReceiveByte(sciREGx);
+            if (key == 'q')
             {
-                char err_msg[40];
-                int el = snprintf(err_msg, sizeof(err_msg),
-                                  "\r\nUDP send err: %d\r\n", (int) send_err);
-                sciDisplayText(sciREGx, (uint8_t*) err_msg, (uint32_t) el);
+                terminal_input_flag = 1;
             }
-
+            /* 'q' dışındaki baytlar yutulur (menü dışındayken önemsiz) */
         }
 
-        if (1 == send_alias_flag)
-        {
-            send_alias_flag = 0;
-            err_t send_err = udp_data_send(h_alias, g_alias_netif, &dest_list_head->next->dest_addr, 4000,
-                                           (const u8_t*) alias_message,
-                                           (u16_t) strlen(alias_message));
-
-            if (send_err != ERR_OK)
-            {
-                char err_msg[40];
-                int el = snprintf(err_msg, sizeof(err_msg),
-                                  "\r\nUDP send err: %d\r\n", (int) send_err);
-                sciDisplayText(sciREGx, (uint8_t*) err_msg, (uint32_t) el);
-            };
-
-        }
-#endif
         if(1 == terminal_input_flag){
             read_terminal_line();
             terminal_input_flag = 0;

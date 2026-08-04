@@ -36,4 +36,6 @@ static struct netif* terminal_select_netif(void);
 
 void terminal_list_netif(void);
 
+static void terminal_ping_command(const char *ip_str);
+
 #endif /* INCLUDE_TERMINAL_INTERFACE_H_ */
