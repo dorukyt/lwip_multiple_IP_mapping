@@ -4,7 +4,6 @@ namespace TmsControlPanel;
 
 public partial class Form1 : Form
 {
-    // YENİ: Karta açtığımız seri port. Bağlı değilken null olur.
     private SerialPort? _serialPort;
 
     public Form1()
@@ -20,10 +19,13 @@ public partial class Form1 : Form
         LoadPorts();
 
         btnRefresh.Click += BtnRefresh_Click;
-        btnConnect.Click += BtnConnect_Click;                 // YENİ
-        this.FormClosing += Form1_FormClosing;                // YENİ: pencere kapanınca portu kapat
+        btnConnect.Click += BtnConnect_Click;
+        btnEnterMenu.Click += BtnEnterMenu_Click;
+        btnSend.Click += BtnSend_Click;              // YENİ
+        txtInput.KeyDown += TxtInput_KeyDown;        // YENİ: Enter ile gönder
+        this.FormClosing += Form1_FormClosing;
 
-        SetConnectedState(false);                             // YENİ: başlangıçta bağlı değiliz
+        SetConnectedState(false);
     }
 
     private void LoadBaudRates()
@@ -53,7 +55,6 @@ public partial class Form1 : Form
         LoadPorts();
     }
 
-    // YENİ: "Bağlan/Kes" butonu — bağlı değilsek bağlan, bağlıysak kes
     private void BtnConnect_Click(object? sender, EventArgs e)
     {
         if (_serialPort == null || !_serialPort.IsOpen)
@@ -66,7 +67,6 @@ public partial class Form1 : Form
         }
     }
 
-    // YENİ: Seri portu aç
     private void Connect()
     {
         if (cmbPort.SelectedItem == null)
@@ -80,12 +80,13 @@ public partial class Form1 : Form
 
         try
         {
-            // 8 veri biti, parite yok, 1 stop biti = "8N1"
             _serialPort = new SerialPort(portName, baud, Parity.None, 8, StopBits.One);
+            _serialPort.DataReceived += SerialPort_DataReceived;
             _serialPort.Open();
 
             SetConnectedState(true);
             lblStatus.Text = $"Bağlı: {portName} @ {baud}";
+            AppendLog($"--- Bağlandı: {portName} @ {baud} ---\r\n");
         }
         catch (Exception ex)
         {
@@ -95,9 +96,9 @@ public partial class Form1 : Form
         }
     }
 
-    // YENİ: Seri portu kapat
     private void Disconnect()
     {
+        AppendLog("--- Bağlantı kesildi ---\r\n");
         _serialPort?.Close();
         _serialPort?.Dispose();
         _serialPort = null;
@@ -105,18 +106,77 @@ public partial class Form1 : Form
         SetConnectedState(false);
     }
 
-    // YENİ: Arayüzü bağlı/değil durumuna göre ayarla
+    private void SerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
+    {
+        try
+        {
+            SerialPort sp = (SerialPort)sender;
+            string data = sp.ReadExisting();
+            AppendLog(data);
+        }
+        catch
+        {
+        }
+    }
+
+    private void AppendLog(string text)
+    {
+        if (txtLog.IsDisposed) return;
+
+        if (txtLog.InvokeRequired)
+        {
+            txtLog.BeginInvoke(new Action(() => AppendLog(text)));
+            return;
+        }
+
+        txtLog.AppendText(text);
+    }
+
+    private void BtnEnterMenu_Click(object? sender, EventArgs e)
+    {
+        _serialPort?.Write("q");
+    }
+
+    // YENİ: Yazılan metni karta gönder (satır sonu '\r' ekleyerek)
+    private void SendLine(string text)
+    {
+        if (_serialPort == null || !_serialPort.IsOpen)
+        {
+            return;
+        }
+        _serialPort.Write(text + "\r");   // menü girişi '\r' ile biter
+    }
+
+    // YENİ: "Gönder" butonu
+    private void BtnSend_Click(object? sender, EventArgs e)
+    {
+        SendLine(txtInput.Text);
+        txtInput.Clear();
+        txtInput.Focus();
+    }
+
+    // YENİ: Giriş kutusunda Enter'a basınca da gönder
+    private void TxtInput_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Enter)
+        {
+            SendLine(txtInput.Text);
+            txtInput.Clear();
+            e.SuppressKeyPress = true;   // Enter'ın 'ding' sesini engelle
+        }
+    }
+
     private void SetConnectedState(bool connected)
     {
         btnConnect.Text = connected ? "Kes" : "Bağlan";
 
-        // Bağlıyken port/baud/yenile değiştirilemesin
         cmbPort.Enabled = !connected;
         cmbBaud.Enabled = !connected;
         btnRefresh.Enabled = !connected;
 
-        // "Menüye Gir" sadece bağlıyken aktif olsun
         btnEnterMenu.Enabled = connected;
+        txtInput.Enabled = connected;     // YENİ
+        btnSend.Enabled = connected;      // YENİ
 
         if (!connected)
         {
@@ -124,7 +184,6 @@ public partial class Form1 : Form
         }
     }
 
-    // YENİ: Pencere kapanırken portu düzgünce serbest bırak
     private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
     {
         _serialPort?.Close();

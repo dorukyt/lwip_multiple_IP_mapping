@@ -35,6 +35,8 @@
             btnEnterMenu = new Button();
             lblStatus = new Label();
             txtLog = new TextBox();
+            txtInput = new TextBox();
+            btnSend = new Button();
             SuspendLayout();
             // 
             // btnConnect
@@ -91,17 +93,35 @@
             // 
             // txtLog
             // 
-            txtLog.Location = new Point(218, 45);
+            txtLog.Location = new Point(218, 84);
             txtLog.Multiline = true;
             txtLog.Name = "txtLog";
-            txtLog.Size = new Size(361, 278);
+            txtLog.Size = new Size(361, 266);
             txtLog.TabIndex = 6;
+            // 
+            // txtInput
+            // 
+            txtInput.Location = new Point(218, 45);
+            txtInput.Name = "txtInput";
+            txtInput.Size = new Size(361, 23);
+            txtInput.TabIndex = 7;
+            // 
+            // btnSend
+            // 
+            btnSend.Location = new Point(365, 356);
+            btnSend.Name = "btnSend";
+            btnSend.Size = new Size(75, 23);
+            btnSend.TabIndex = 8;
+            btnSend.Text = "Gönder";
+            btnSend.UseVisualStyleBackColor = true;
             // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
+            Controls.Add(btnSend);
+            Controls.Add(txtInput);
             Controls.Add(txtLog);
             Controls.Add(lblStatus);
             Controls.Add(btnEnterMenu);
@@ -124,5 +144,7 @@
         private Button btnEnterMenu;
         private Label lblStatus;
         private TextBox txtLog;
+        private TextBox txtInput;
+        private Button btnSend;
     }
 }
