@@ -162,6 +162,15 @@ public class SerialManager
             return;
         }
 
+        // "#EVT ..." = istem dışı olay (ör. UDP RX). Bir komut yanıtı toplanıyor
+        // olsa bile araya girebilir; asla yanıtın parçası sayılmaz.
+        if (line.StartsWith("#EVT "))
+        {
+            string evt = line.Substring("#EVT ".Length);
+            Post(() => AsyncLineReceived?.Invoke(evt));
+            return;
+        }
+
         if (line.StartsWith("#BEGIN "))
         {
             _collectName = line.Substring("#BEGIN ".Length).Trim();

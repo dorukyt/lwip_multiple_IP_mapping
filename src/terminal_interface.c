@@ -1339,12 +1339,57 @@ static void cmd_udp_send(char *args)
     cmd_out("#END UDPSEND OK\r\n");
 }
 
+/* NETIF SET <idx> IP|MASK|GW <deger> */
+static void cmd_netif_set(const char *args)
+{
+    int idx = 0;
+    char field[8], val_s[16];
+    ip_addr_t val;
+    struct netif *n;
+
+    cmd_out("#BEGIN NETIFSET\r\n");
+
+    if (sscanf(args, "%d %7s %15s", &idx, field, val_s) != 3 || !ipaddr_aton(val_s, &val))
+    {
+        cmd_out("#END NETIFSET ERR:bad_args\r\n");
+        return;
+    }
+    n = cmd_netif_by_index(idx);
+    if (NULL == n)
+    {
+        cmd_out("#END NETIFSET ERR:bad_index\r\n");
+        return;
+    }
+
+    if (strcmp(field, "IP") == 0)
+    {
+        netif_set_ipaddr(n, &val);
+        udp_source_netif_ip_changed(n);   /* soketleri yeni IP'ye tasi */
+    }
+    else if (strcmp(field, "MASK") == 0)
+    {
+        netif_set_netmask(n, &val);
+    }
+    else if (strcmp(field, "GW") == 0)
+    {
+        netif_set_gw(n, &val);
+    }
+    else
+    {
+        cmd_out("#END NETIFSET ERR:bad_field\r\n");
+        return;
+    }
+
+    cmd_out("#END NETIFSET OK\r\n");
+}
+
 /* tam bir komut satirini isle */
 static void cmd_dispatch(char *line)
 {
     if      (strcmp (line, "NETIF LIST") == 0)      cmd_netif_list();
     else if (strncmp(line, "NETIF ADD ", 10) == 0)  cmd_netif_add(line + 10);
     else if (strncmp(line, "NETIF DEL ", 10) == 0)  cmd_netif_del(line + 10);
+    else if (strncmp(line, "NETIF SET ", 10) == 0)  cmd_netif_set(line + 10);
     else if (strncmp(line, "SOCK OPEN ", 10) == 0)  cmd_sock_open(line + 10);
     else if (strncmp(line, "SOCK CLOSE ", 11) == 0) cmd_sock_close(line + 11);
     else if (strncmp(line, "PING ", 5) == 0)        cmd_ping(line + 5);

@@ -14,6 +14,8 @@ public class NetifCard : Panel
     public event Action<NetifCard, SocketInfo>? SocketDeleteRequested;
     /// <summary>Soket şeridindeki + çipine basıldı (yeni soket aç).</summary>
     public event Action<NetifCard>? SocketAddRequested;
+    /// <summary>Karttaki ✏ butonuna basıldı (IP/Mask/GW düzenle).</summary>
+    public event Action<NetifCard>? EditRequested;
 
     private const int HeaderHeight = 62;
     private const int SocketRowHeight = 44;
@@ -68,14 +70,27 @@ public class NetifCard : Panel
             Location = new Point(10, 35)
         };
 
-        // sağa yaslı sil butonu (kendi mini panelinde, kart genişlese de sağda kalır)
-        var rightPane = new Panel { Dock = DockStyle.Right, Width = 48 };
+        // sağa yaslı düzenle + sil butonları (kart genişlese de sağda kalır)
+        var rightPane = new Panel { Dock = DockStyle.Right, Width = 92 };
+        var btnEdit = new Button
+        {
+            Text = "✏",
+            Width = 36,
+            Height = 30,
+            Location = new Point(4, 16),
+            FlatStyle = FlatStyle.Flat,
+            Cursor = Cursors.Hand
+        };
+        btnEdit.FlatAppearance.BorderSize = 0;
+        btnEdit.Click += (s, e) => EditRequested?.Invoke(this);
+        rightPane.Controls.Add(btnEdit);
+
         var btnDelete = new Button
         {
             Text = "🗑",
             Width = 36,
             Height = 30,
-            Location = new Point(4, 16),
+            Location = new Point(48, 16),
             FlatStyle = FlatStyle.Flat,
             Cursor = Cursors.Hand
         };

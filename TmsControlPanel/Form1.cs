@@ -15,9 +15,11 @@ public partial class Form1 : Form
     private List<NetifInfo> _netifs = new();               // en son bilinen netif listesi
 
     private CancellationTokenSource? _pingCts;             // sürekli ping'i durdurmak için
+    private readonly AppSettings _settings = AppSettings.Load();
 
     private const int PingAttempts = 4;
     private const int ScanTimeoutMs = 60000;               // ARP taraması ~13 sn sürebiliyor
+    private const int MaxLogChars = 200_000;               // log kutusu üst sınırı (~2500 satır)
 
     public Form1()
     {
@@ -25,8 +27,8 @@ public partial class Form1 : Form
 
         // SerialManager UI thread bağlamını yakalar -> event'leri bize doğru thread'de verir
         _serial = new SerialManager();
-        _serial.RawReceived += chunk => txtRxLog.AppendText(chunk);
-        _serial.TextSent += text => txtTxLog.AppendText(text.TrimEnd('\r') + Environment.NewLine);
+        _serial.RawReceived += chunk => AppendLog(txtRxLog, chunk);
+        _serial.TextSent += text => AppendLog(txtTxLog, text.TrimEnd('\r') + Environment.NewLine);
         _serial.AsyncLineReceived += OnAsyncLine;
 
         cmbPort.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -75,15 +77,18 @@ public partial class Form1 : Form
         cmbBaud.Items.Clear();
         foreach (int baud in baudRates)
             cmbBaud.Items.Add(baud);
-        cmbBaud.SelectedItem = 9600;
+        cmbBaud.SelectedItem = cmbBaud.Items.Contains(_settings.Baud) ? _settings.Baud : 9600;
     }
 
     private void LoadPorts()
     {
         cmbPort.Items.Clear();
         cmbPort.Items.AddRange(SerialPort.GetPortNames());
-        if (cmbPort.Items.Count > 0)
-            cmbPort.SelectedIndex = 0;
+        if (cmbPort.Items.Count == 0) return;
+
+        // en son kullanılan port hâlâ varsa onu seç
+        int idx = _settings.Port != null ? cmbPort.Items.IndexOf(_settings.Port) : -1;
+        cmbPort.SelectedIndex = idx >= 0 ? idx : 0;
     }
 
     private void BtnConnect_Click(object? sender, EventArgs e)
@@ -110,6 +115,11 @@ public partial class Form1 : Form
             _serial.Connect(portName, baud);
             SetConnectedState(true);
             lblStatus.Text = $"Bağlı: {portName} @ {baud}";
+
+            _settings.Port = portName;      // sonraki açılışta hatırla
+            _settings.Baud = baud;
+            _settings.Save();
+
             _pausePollUntil = DateTime.MinValue;
             _ = ForceRefreshAsync();   // ilk listeyi beklemeden çek
         }
@@ -219,6 +229,7 @@ public partial class Form1 : Form
             card.DeleteRequested += Card_DeleteRequested;
             card.SocketDeleteRequested += Card_SocketDeleteRequested;
             card.SocketAddRequested += Card_SocketAddRequested;
+            card.EditRequested += Card_EditRequested;
             flpNetifs.Controls.Add(card);
         }
 
@@ -334,6 +345,36 @@ public partial class Form1 : Form
     private async void Card_SocketDeleteRequested(NetifCard card, SocketInfo sock)
     {
         await RunCommandAsync($"SOCK CLOSE {card.Netif.Index} {sock.Nth}", "Soket Sil");
+    }
+
+    private async void Card_EditRequested(NetifCard card)
+    {
+        List<(string Field, string Value)>? changes = NetifEditDialog.Show(card.Netif);
+        if (changes == null || changes.Count == 0) return;
+
+        // Her alan ayrı komut. IP değişince kartın yanıtı bize dönmeye devam eder
+        // (seri hat etkilenmez), ama netif indeksleri sabit kaldığı için sorun olmaz.
+        foreach ((string field, string value) in changes)
+        {
+            try
+            {
+                ProtocolResponse resp = await _serial.SendCommandAsync(
+                    $"NETIF SET {card.Netif.Index} {field} {value}");
+                if (!resp.Ok)
+                {
+                    MessageBox.Show($"{field} değiştirilemedi: {resp.Status}", "Netif Düzenle");
+                    break;
+                }
+                TermLine($"{card.Netif.Index}.netif {field} -> {value}");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Hata: {ex.Message}", "Netif Düzenle");
+                break;
+            }
+        }
+
+        await ForceRefreshAsync();
     }
 
     private async void Card_SocketAddRequested(NetifCard card)
@@ -629,15 +670,38 @@ public partial class Form1 : Form
         TermLine("Kart menüsü açıldı — çıkmak için menüde bir işlemi tamamla.");
     }
 
-    /// <summary>Karttan gelen istem dışı satırlar (ör. "UDP RX: ...").</summary>
+    /// <summary>Karttan gelen istem dışı satırlar ("#EVT ..." ve serbest metin).</summary>
     private void OnAsyncLine(string line)
     {
+        if (line.StartsWith("UDPRX ", StringComparison.Ordinal))
+        {
+            // "UDPRX 10.0.0.5:4000 -> 10.0.0.10:3000 12 merhaba"
+            TermLine("UDP geldi: " + line.Substring(6));
+            return;
+        }
+
         if (line.StartsWith("UDP RX:") || line.StartsWith("Data:"))
             TermLine(line);
     }
 
     private void TermLine(string text)
     {
-        txtTermOut.AppendText(text + Environment.NewLine);
+        AppendLog(txtTermOut, text + Environment.NewLine);
+    }
+
+    /// <summary>Log kutusuna ekler; kutu şiştiğinde baştan kırpar.</summary>
+    private static void AppendLog(TextBox box, string text)
+    {
+        if (box.IsDisposed) return;
+
+        if (box.TextLength + text.Length > MaxLogChars)
+        {
+            // en eski yarıyı at, satır ortasından kesmemek için ilk satır sonuna hizala
+            string kept = box.Text.Substring(box.TextLength / 2);
+            int nl = kept.IndexOf('\n');
+            box.Text = nl >= 0 ? kept.Substring(nl + 1) : kept;
+        }
+
+        box.AppendText(text);
     }
 }
