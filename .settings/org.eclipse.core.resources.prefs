@@ -1,6 +1,10 @@
 eclipse.preferences.version=1
 encoding//Debug/HALCoGen-TMS570LC43x/source/subdir_rules.mk=UTF-8
 encoding//Debug/HALCoGen-TMS570LC43x/source/subdir_vars.mk=UTF-8
+encoding//Debug/TmsControlPanel/bin/Debug/net10.0-windows/subdir_rules.mk=UTF-8
+encoding//Debug/TmsControlPanel/bin/Debug/net10.0-windows/subdir_vars.mk=UTF-8
+encoding//Debug/TmsControlPanel/obj/Debug/net10.0-windows/subdir_rules.mk=UTF-8
+encoding//Debug/TmsControlPanel/obj/Debug/net10.0-windows/subdir_vars.mk=UTF-8
 encoding//Debug/example/hdk/src/subdir_rules.mk=UTF-8
 encoding//Debug/example/hdk/src/subdir_vars.mk=UTF-8
 encoding//Debug/lwip-1.4.1/apps/httpserver_raw/makefsdata/subdir_rules.mk=UTF-8

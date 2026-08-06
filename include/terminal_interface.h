@@ -38,4 +38,7 @@ void terminal_list_netif(void);
 
 static void terminal_ping_command(const char *ip_str);
 
+/* --- Yapisal komut kanali (Protokol B) --- */
+void cmd_channel_feed(uint8_t ch);
+
 #endif /* INCLUDE_TERMINAL_INTERFACE_H_ */

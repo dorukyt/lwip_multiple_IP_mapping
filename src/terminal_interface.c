@@ -52,6 +52,17 @@ dest_node_t *dest_list_add(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
     return new_node;
 }
 
+/* Tek karakterlik secim okumadan once hatta bekleyen baytlari
+ * (ornegin onceki satirdan kalan '\r') temizler, sonra 1 karakter okur.
+ * Masaustu uygulamasi her gonderime '\r' ekledigi icin gereklidir. */
+static uint8_t read_choice_char(void)
+{
+    uint8_t ch;
+    while (sciIsRxReady(sciREGx)) { (void) sciReceiveByte(sciREGx); }
+    sciReceive(sciREGx, 1, &ch);
+    return ch;
+}
+
 void read_terminal_line(void)
 {
     uint8_t ch;
@@ -149,7 +160,7 @@ void read_terminal_line(void)
         char MsgCloseSocket[] ="5. Delete Socket\r\n\n";
         sciSend(sciREGx, sizeof(MsgCloseSocket) - 1, (uint8_t*) MsgCloseSocket);
 
-        sciReceive(sciREGx, 1, &ch);
+        ch = read_choice_char();
         sciSendByte(sciREGx, ch);
         sciSendByte(sciREGx, '\r');
         sciSendByte(sciREGx, '\n');
@@ -322,7 +333,7 @@ void read_terminal_line(void)
         char MsgDeleteNetif[] = "2.Delete Netif\r\n";
         sciSend(sciREGx, sizeof(MsgDeleteNetif) - 1, (uint8_t*) MsgDeleteNetif);
 
-        sciReceive(sciREGx, 1, &ch);
+        ch = read_choice_char();
         sciSendByte(sciREGx, ch);
         sciSendByte(sciREGx, '\r');
         sciSendByte(sciREGx, '\n');
@@ -818,7 +829,7 @@ static struct netif* terminal_select_netif(void)
 
     //reads the user input from 1-9 and selects the correct netif
     n = netif_list;
-    sciReceive(sciREGx, 1, &ch);
+    ch = read_choice_char();
     idx = (uint32_t) (ch - '0');
     idx--;
     while (n != NULL && idx-- > 0)
@@ -1024,4 +1035,207 @@ static void terminal_ping_command(const char *arg)
             sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
         }
     }
+}
+
+
+/* ============================================================
+ *  Yapisal komut kanali (Protokol B)
+ *  Ana dongu 'q' disindaki baytlari buraya besler; '\r' gelince
+ *  satir bir komut olarak islenir ve '#'-cerceveli yanit basilir.
+ *
+ *  Komutlar:
+ *    NETIF LIST
+ *    NETIF ADD <ip> <mask> <gw>
+ *    NETIF DEL <idx>
+ *    SOCK OPEN <idx> <port>
+ *    SOCK CLOSE <idx> <nth>
+ * ============================================================ */
+
+#define CMD_LINE_MAX 128
+static char     cmd_line[CMD_LINE_MAX];
+static uint16_t cmd_line_len = 0;
+
+/* null-sonlu string'i seri porta yolla */
+static void cmd_out(const char *s)
+{
+    sciSend(sciREGx, (uint32_t) strlen(s), (uint8_t*) s);
+}
+
+/* 1 tabanli indeks -> netif*  (bulunamazsa NULL) */
+static struct netif* cmd_netif_by_index(int idx)
+{
+    struct netif *n;
+    if (idx < 1) return NULL;
+    for (n = netif_list; n != NULL && idx > 1; n = n->next) idx--;
+    return n;
+}
+
+/* NETIF LIST -> her netif icin #NETIF satiri + soketleri icin #SOCK satirlari */
+static void cmd_netif_list(void)
+{
+    struct netif *n;
+    int idx = 1;
+    int len;
+    uint8_t j;
+    char line[96];
+    char ip_str[16], mask_str[16], gw_str[16];
+
+    cmd_out("#BEGIN NETIFLIST\r\n");
+
+    for (n = netif_list; n != NULL; n = n->next)
+    {
+        ipaddr_ntoa_r(&n->ip_addr, ip_str,   sizeof(ip_str));
+        ipaddr_ntoa_r(&n->netmask, mask_str, sizeof(mask_str));
+        ipaddr_ntoa_r(&n->gw,      gw_str,   sizeof(gw_str));
+
+        len = snprintf(line, sizeof(line),
+                       "#NETIF %d %s %s %s socks=%u\r\n",
+                       idx, ip_str, mask_str, gw_str,
+                       (unsigned) udp_source_count_sockets(n));
+        sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+
+        for (j = 0; j < udp_source_count_sockets(n); j++)
+        {
+            len = snprintf(line, sizeof(line), "#SOCK %d %u %u\r\n",
+                           idx, (unsigned) (j + 1),
+                           (unsigned) udp_source_get_socket(n, j).local_port);
+            sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+        }
+        idx++;
+    }
+
+    cmd_out("#END NETIFLIST OK\r\n");
+}
+
+/* NETIF ADD <ip> <mask> <gw> */
+static void cmd_netif_add(const char *args)
+{
+    char ip_s[16], mask_s[16], gw_s[16];
+    ip_addr_t ip, mask, gw;
+
+    cmd_out("#BEGIN NETIFADD\r\n");
+
+    if (sscanf(args, "%15s %15s %15s", ip_s, mask_s, gw_s) != 3
+        || !ipaddr_aton(ip_s, &ip)
+        || !ipaddr_aton(mask_s, &mask)
+        || !ipaddr_aton(gw_s, &gw))
+    {
+        cmd_out("#END NETIFADD ERR:bad_args\r\n");
+        return;
+    }
+
+    if (ERR_OK != net_if_add(&ip, &mask, &gw))
+    {
+        cmd_out("#END NETIFADD ERR:add_failed\r\n");
+        return;
+    }
+    cmd_out("#END NETIFADD OK\r\n");
+}
+
+/* NETIF DEL <idx> */
+static void cmd_netif_del(const char *args)
+{
+    struct netif *n = cmd_netif_by_index(atoi(args));
+
+    cmd_out("#BEGIN NETIFDEL\r\n");
+
+    if (NULL == n)
+    {
+        cmd_out("#END NETIFDEL ERR:bad_index\r\n");
+        return;
+    }
+    if (ERR_OK != net_if_remove(n))
+    {
+        cmd_out("#END NETIFDEL ERR:remove_failed\r\n");
+        return;
+    }
+    cmd_out("#END NETIFDEL OK\r\n");
+}
+
+/* SOCK OPEN <idx> <port> */
+static void cmd_sock_open(const char *args)
+{
+    int idx = 0, port = 0;
+    udp_sock_id_t id;
+    struct netif *n;
+
+    cmd_out("#BEGIN SOCKOPEN\r\n");
+
+    if (sscanf(args, "%d %d", &idx, &port) != 2 || port < 1 || port > 65535)
+    {
+        cmd_out("#END SOCKOPEN ERR:bad_args\r\n");
+        return;
+    }
+    n = cmd_netif_by_index(idx);
+    if (NULL == n)
+    {
+        cmd_out("#END SOCKOPEN ERR:bad_index\r\n");
+        return;
+    }
+    if (ERR_OK != udp_source_add_listener(n, (u16_t) port, &id))
+    {
+        cmd_out("#END SOCKOPEN ERR:open_failed\r\n");
+        return;
+    }
+    cmd_out("#END SOCKOPEN OK\r\n");
+}
+
+/* SOCK CLOSE <idx> <nth> */
+static void cmd_sock_close(const char *args)
+{
+    int idx = 0, nth = 0;
+    struct netif *n;
+
+    cmd_out("#BEGIN SOCKCLOSE\r\n");
+
+    if (sscanf(args, "%d %d", &idx, &nth) != 2)
+    {
+        cmd_out("#END SOCKCLOSE ERR:bad_args\r\n");
+        return;
+    }
+    n = cmd_netif_by_index(idx);
+    if (NULL == n)
+    {
+        cmd_out("#END SOCKCLOSE ERR:bad_index\r\n");
+        return;
+    }
+    if (nth < 1 || nth > udp_source_count_sockets(n))
+    {
+        cmd_out("#END SOCKCLOSE ERR:bad_socket\r\n");
+        return;
+    }
+    udp_source_remove_listener(udp_source_get_socket(n, (u8_t)(nth - 1)).socket_id);
+    cmd_out("#END SOCKCLOSE OK\r\n");
+}
+
+/* tam bir komut satirini isle */
+static void cmd_dispatch(char *line)
+{
+    if      (strcmp (line, "NETIF LIST") == 0)      cmd_netif_list();
+    else if (strncmp(line, "NETIF ADD ", 10) == 0)  cmd_netif_add(line + 10);
+    else if (strncmp(line, "NETIF DEL ", 10) == 0)  cmd_netif_del(line + 10);
+    else if (strncmp(line, "SOCK OPEN ", 10) == 0)  cmd_sock_open(line + 10);
+    else if (strncmp(line, "SOCK CLOSE ", 11) == 0) cmd_sock_close(line + 11);
+    else                                            cmd_out("#ERR unknown_command\r\n");
+}
+
+/* ana dongunun besledigi bayt akisi; '\r'/'\n' gelince satiri isle */
+void cmd_channel_feed(uint8_t ch)
+{
+    if (ch == '\r' || ch == '\n')
+    {
+        if (cmd_line_len > 0)
+        {
+            cmd_line[cmd_line_len] = '\0';
+            cmd_dispatch(cmd_line);
+            cmd_line_len = 0;
+        }
+        return;
+    }
+
+    if (cmd_line_len < CMD_LINE_MAX - 1)
+    {
+        cmd_line[cmd_line_len++] = (char) ch;
+    }
+    /* satir tasarsa fazlasini yoksay (sonraki '\r'de sifirlanir) */
 }

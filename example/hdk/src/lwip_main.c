@@ -246,7 +246,10 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
             {
                 terminal_input_flag = 1;
             }
-            /* 'q' dışındaki baytlar yutulur (menü dışındayken önemsiz) */
+            else
+            {
+                cmd_channel_feed(key);   // 'q' disindaki baytlar -> yapisal komut kanali
+            }
         }
 
         if(1 == terminal_input_flag){
