@@ -151,7 +151,13 @@ public class SerialManager
     {
         if (!line.StartsWith("#"))
         {
-            if (line.Length > 0)
+            if (line.Length == 0) return;
+
+            // Bir blok toplanıyorsa serbest metin de yanıta ait sayılır
+            // (ör. scan_network'ün bastığı "Host up: ..." satırları).
+            if (_collectName != null)
+                _collectLines.Add(line);
+            else
                 Post(() => AsyncLineReceived?.Invoke(line));
             return;
         }

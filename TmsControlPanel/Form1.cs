@@ -9,9 +9,15 @@ public partial class Form1 : Form
     private AddNetifCard _addCard = null!;
 
     private readonly System.Windows.Forms.Timer _pollTimer = new();
-    private DateTime _pausePollUntil = DateTime.MinValue;  // menü/terminal kullanımında oto-yenileme molası
+    private DateTime _pausePollUntil = DateTime.MinValue;  // menü kullanımında oto-yenileme molası
     private bool _refreshBusy;
-    private string _lastSignature = "";                    // son çizilen listenin imzası (gereksiz yeniden çizim olmasın)
+    private string _lastSignature = "";                    // son çizilen listenin imzası
+    private List<NetifInfo> _netifs = new();               // en son bilinen netif listesi
+
+    private CancellationTokenSource? _pingCts;             // sürekli ping'i durdurmak için
+
+    private const int PingAttempts = 4;
+    private const int ScanTimeoutMs = 60000;               // ARP taraması ~13 sn sürebiliyor
 
     public Form1()
     {
@@ -21,9 +27,13 @@ public partial class Form1 : Form
         _serial = new SerialManager();
         _serial.RawReceived += chunk => txtRxLog.AppendText(chunk);
         _serial.TextSent += text => txtTxLog.AppendText(text.TrimEnd('\r') + Environment.NewLine);
+        _serial.AsyncLineReceived += OnAsyncLine;
 
         cmbPort.DropDownStyle = ComboBoxStyle.DropDownList;
         cmbBaud.DropDownStyle = ComboBoxStyle.DropDownList;
+        cmbTermNetif.DropDownStyle = ComboBoxStyle.DropDownList;
+        cmbSendNetif.DropDownStyle = ComboBoxStyle.DropDownList;
+        cmbSendSocket.DropDownStyle = ComboBoxStyle.DropDownList;
 
         LoadBaudRates();
         LoadPorts();
@@ -31,10 +41,15 @@ public partial class Form1 : Form
         btnRefresh.Click += (s, e) => LoadPorts();
         btnConnect.Click += BtnConnect_Click;
         btnEnterMenu.Click += BtnEnterMenu_Click;
-        btnSend.Click += (s, e) => SendTerminalLine();
-        btnClear.Click += (s, e) => { txtRxLog.Clear(); txtTxLog.Clear(); };
+        btnSend.Click += (s, e) => RunTerminalInput();
+        btnStop.Click += (s, e) => _pingCts?.Cancel();
+        btnClear.Click += (s, e) => { txtRxLog.Clear(); txtTxLog.Clear(); txtTermOut.Clear(); };
         txtInput.KeyDown += TxtInput_KeyDown;
-        FormClosing += (s, e) => _serial.Disconnect();
+        btnScan.Click += BtnScan_Click;
+        btnArpReset.Click += BtnArpReset_Click;
+        btnUdpSend.Click += BtnUdpSend_Click;
+        cmbSendNetif.SelectedIndexChanged += (s, e) => FillSocketCombo();
+        FormClosing += (s, e) => { _pingCts?.Cancel(); _serial.Disconnect(); };
         flpNetifs.SizeChanged += (s, e) => UpdateCardWidths();
 
         // "+" kartı listenin sonunda hep durur
@@ -75,6 +90,7 @@ public partial class Form1 : Form
     {
         if (_serial.IsOpen)
         {
+            _pingCts?.Cancel();
             _serial.Disconnect();
             SetConnectedState(false);
             return;
@@ -95,7 +111,7 @@ public partial class Form1 : Form
             SetConnectedState(true);
             lblStatus.Text = $"Bağlı: {portName} @ {baud}";
             _pausePollUntil = DateTime.MinValue;
-            _ = ForceRefreshAsync();   // ilk listeyi beklemeden çek (fire-and-forget)
+            _ = ForceRefreshAsync();   // ilk listeyi beklemeden çek
         }
         catch (Exception ex)
         {
@@ -114,6 +130,11 @@ public partial class Form1 : Form
         txtInput.Enabled = connected;
         btnSend.Enabled = connected;
         btnEnterMenu.Enabled = connected;
+        cmbTermNetif.Enabled = connected;
+        btnScan.Enabled = connected;
+        btnArpReset.Enabled = connected;
+        btnUdpSend.Enabled = connected;
+        grpSend.Enabled = connected;
         _addCard.Enabled = connected;
 
         if (connected)
@@ -125,7 +146,9 @@ public partial class Form1 : Form
             _pollTimer.Stop();
             lblStatus.Text = "Bağlı değil";
             ClearCards();
+            _netifs = new List<NetifInfo>();
             _lastSignature = "";
+            FillNetifCombos();
         }
     }
 
@@ -135,7 +158,8 @@ public partial class Form1 : Form
 
     private async Task PollTickAsync()
     {
-        if (DateTime.Now < _pausePollUntil) return;   // menü/terminal molası
+        if (DateTime.Now < _pausePollUntil) return;   // menü molası
+        if (_pingCts != null) return;                 // ping döngüsü sürerken karışma
         await RefreshNetifsAsync();
     }
 
@@ -161,7 +185,9 @@ public partial class Form1 : Form
             if (sig == _lastSignature) return;   // değişiklik yok -> ekrana dokunma
 
             _lastSignature = sig;
+            _netifs = netifs;
             RebuildCards(netifs);
+            FillNetifCombos();
         }
         catch
         {
@@ -192,6 +218,7 @@ public partial class Form1 : Form
             var card = new NetifCard(n);
             card.DeleteRequested += Card_DeleteRequested;
             card.SocketDeleteRequested += Card_SocketDeleteRequested;
+            card.SocketAddRequested += Card_SocketAddRequested;
             flpNetifs.Controls.Add(card);
         }
 
@@ -219,8 +246,75 @@ public partial class Form1 : Form
             c.Width = w;
     }
 
+    /// <summary>Netif combobox'larını tazeler, mümkünse önceki seçimi korur.</summary>
+    private void FillNetifCombos()
+    {
+        FillOneNetifCombo(cmbTermNetif);
+        FillOneNetifCombo(cmbSendNetif);
+        FillSocketCombo();
+    }
+
+    private void FillOneNetifCombo(ComboBox cmb)
+    {
+        int previous = (cmb.SelectedItem as NetifItem)?.Index ?? -1;
+
+        cmb.BeginUpdate();
+        cmb.Items.Clear();
+        foreach (NetifInfo n in _netifs)
+            cmb.Items.Add(new NetifItem(n));
+        cmb.EndUpdate();
+
+        if (cmb.Items.Count == 0) return;
+
+        int restore = 0;
+        for (int i = 0; i < cmb.Items.Count; i++)
+        {
+            if (((NetifItem)cmb.Items[i]!).Index == previous) { restore = i; break; }
+        }
+        cmb.SelectedIndex = restore;
+    }
+
+    private void FillSocketCombo()
+    {
+        NetifInfo? n = SelectedNetif(cmbSendNetif);
+        int previous = (cmbSendSocket.SelectedItem as SocketItem)?.Nth ?? -1;
+
+        cmbSendSocket.BeginUpdate();
+        cmbSendSocket.Items.Clear();
+        if (n != null)
+        {
+            foreach (SocketInfo s in n.Sockets)
+                cmbSendSocket.Items.Add(new SocketItem(s));
+        }
+        cmbSendSocket.EndUpdate();
+
+        if (cmbSendSocket.Items.Count == 0) return;
+
+        int restore = 0;
+        for (int i = 0; i < cmbSendSocket.Items.Count; i++)
+        {
+            if (((SocketItem)cmbSendSocket.Items[i]!).Nth == previous) { restore = i; break; }
+        }
+        cmbSendSocket.SelectedIndex = restore;
+    }
+
+    private NetifInfo? SelectedNetif(ComboBox cmb) => (cmb.SelectedItem as NetifItem)?.Netif;
+
+    // ComboBox'ta netif/soket göstermek için küçük sarmalayıcılar (ToString ekranda görünür)
+    private sealed record NetifItem(NetifInfo Netif)
+    {
+        public int Index => Netif.Index;
+        public override string ToString() => $"{Netif.Index}.netif — {Netif.Ip}";
+    }
+
+    private sealed record SocketItem(SocketInfo Sock)
+    {
+        public int Nth => Sock.Nth;
+        public override string ToString() => $"{Sock.Nth}. soket — port {Sock.Port}";
+    }
+
     // ------------------------------------------------------------------
-    //  Kart olayları (sil / soket sil / netif ekle)
+    //  Kart olayları (netif sil/ekle, soket sil/ekle)
     // ------------------------------------------------------------------
 
     private async void Card_DeleteRequested(NetifCard card)
@@ -231,40 +325,29 @@ public partial class Form1 : Form
             "Netif Sil", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
         if (answer != DialogResult.Yes) return;
 
-        try
-        {
-            ProtocolResponse resp = await _serial.SendCommandAsync($"NETIF DEL {n.Index}");
-            if (!resp.Ok)
-            {
-                string msg = resp.Status.Contains("remove_failed")
-                    ? "Bu netif silinemedi (fiziksel netif silinemez)."
-                    : $"Hata: {resp.Status}";
-                MessageBox.Show(msg, "Netif Sil");
-            }
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Hata: {ex.Message}", "Netif Sil");
-        }
-
-        await ForceRefreshAsync();
+        await RunCommandAsync($"NETIF DEL {n.Index}", "Netif Sil", status =>
+            status.Contains("remove_failed")
+                ? "Bu netif silinemedi (fiziksel netif silinemez)."
+                : $"Hata: {status}");
     }
 
     private async void Card_SocketDeleteRequested(NetifCard card, SocketInfo sock)
     {
-        try
+        await RunCommandAsync($"SOCK CLOSE {card.Netif.Index} {sock.Nth}", "Soket Sil");
+    }
+
+    private async void Card_SocketAddRequested(NetifCard card)
+    {
+        if (!InputDialog.Ask($"{card.Netif.Index}.netif — Yeni Soket", "Port numarası:", "5000", out string portText))
+            return;
+
+        if (!int.TryParse(portText, out int port) || port < 1 || port > 65535)
         {
-            ProtocolResponse resp = await _serial.SendCommandAsync(
-                $"SOCK CLOSE {card.Netif.Index} {sock.Nth}");
-            if (!resp.Ok)
-                MessageBox.Show($"Soket silinemedi: {resp.Status}", "Soket Sil");
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Hata: {ex.Message}", "Soket Sil");
+            MessageBox.Show("Port 1–65535 arasında bir sayı olmalı.", "Soket Aç");
+            return;
         }
 
-        await ForceRefreshAsync();
+        await RunCommandAsync($"SOCK OPEN {card.Netif.Index} {port}", "Soket Aç");
     }
 
     private async void AddCard_AddRequested(string ip, string mask, string gw)
@@ -277,52 +360,284 @@ public partial class Form1 : Form
             return;
         }
 
+        if (await RunCommandAsync($"NETIF ADD {ip} {mask} {gw}", "Netif Ekle"))
+            _addCard.Collapse();
+    }
+
+    /// <summary>Komutu gönder, hata varsa kullanıcıya göster, sonra listeyi tazele.</summary>
+    private async Task<bool> RunCommandAsync(string command, string title, Func<string, string>? errorText = null)
+    {
+        bool ok = false;
         try
         {
-            ProtocolResponse resp = await _serial.SendCommandAsync($"NETIF ADD {ip} {mask} {gw}");
-            if (!resp.Ok)
+            ProtocolResponse resp = await _serial.SendCommandAsync(command);
+            ok = resp.Ok;
+            if (!ok)
             {
-                MessageBox.Show($"Netif eklenemedi: {resp.Status}", "Netif Ekle");
-                return;
+                string msg = errorText != null ? errorText(resp.Status) : $"Hata: {resp.Status}";
+                MessageBox.Show(msg, title);
             }
-            _addCard.Collapse();
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Hata: {ex.Message}", "Netif Ekle");
+            MessageBox.Show($"Hata: {ex.Message}", title);
         }
 
         await ForceRefreshAsync();
+        return ok;
     }
 
     // ------------------------------------------------------------------
-    //  Terminal (ham giriş) — menü kullanımı için hâlâ gerekli (ör. ping)
+    //  İşlemler: ağ taraması / ARP sıfırlama
     // ------------------------------------------------------------------
+
+    private async void BtnScan_Click(object? sender, EventArgs e)
+    {
+        NetifInfo? n = SelectedNetif(cmbTermNetif);
+        if (n == null)
+        {
+            MessageBox.Show("Önce Terminal bölümünden bir netif seç.", "Ağ Taraması");
+            return;
+        }
+
+        btnScan.Enabled = false;
+        TermLine($"[{n.Index}.netif] ağ taraması başladı, ~15 sn sürebilir...");
+        try
+        {
+            ProtocolResponse resp = await _serial.SendCommandAsync($"SCAN {n.Index}", ScanTimeoutMs);
+            if (!resp.Ok)
+            {
+                TermLine($"Tarama hatası: {resp.Status}");
+                return;
+            }
+
+            List<ScanHost> hosts = Protocol.ParseScan(resp);
+            if (hosts.Count == 0)
+            {
+                TermLine("Tarama bitti: aktif cihaz bulunamadı.");
+            }
+            else
+            {
+                TermLine($"Tarama bitti — {hosts.Count} cihaz:");
+                foreach (ScanHost h in hosts)
+                    TermLine($"   {h.Ip}   MAC {h.Mac}");
+            }
+        }
+        catch (Exception ex)
+        {
+            TermLine($"Tarama hatası: {ex.Message}");
+        }
+        finally
+        {
+            btnScan.Enabled = _serial.IsOpen;
+        }
+    }
+
+    private async void BtnArpReset_Click(object? sender, EventArgs e)
+    {
+        btnArpReset.Enabled = false;
+        try
+        {
+            ProtocolResponse resp = await _serial.SendCommandAsync("ARPRESET");
+            TermLine(resp.Ok ? "ARP tabloları sıfırlandı." : $"ARP sıfırlama hatası: {resp.Status}");
+        }
+        catch (Exception ex)
+        {
+            TermLine($"ARP sıfırlama hatası: {ex.Message}");
+        }
+        finally
+        {
+            btnArpReset.Enabled = _serial.IsOpen;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    //  UDP gönderimi
+    // ------------------------------------------------------------------
+
+    private async void BtnUdpSend_Click(object? sender, EventArgs e)
+    {
+        NetifInfo? n = SelectedNetif(cmbSendNetif);
+        if (n == null)
+        {
+            MessageBox.Show("Gönderim için bir netif seç.", "UDP Gönder");
+            return;
+        }
+        if (cmbSendSocket.SelectedItem is not SocketItem sock)
+        {
+            MessageBox.Show("Bu netif'te soket yok. Önce kart üzerinden + ile soket aç.", "UDP Gönder");
+            return;
+        }
+        if (!IPAddress.TryParse(txtDstIp.Text.Trim(), out _))
+        {
+            MessageBox.Show("Geçersiz hedef IP.", "UDP Gönder");
+            return;
+        }
+        if (!int.TryParse(txtDstPort.Text.Trim(), out int dstPort) || dstPort < 1 || dstPort > 65535)
+        {
+            MessageBox.Show("Hedef port 1–65535 arasında olmalı.", "UDP Gönder");
+            return;
+        }
+        string data = txtSendData.Text;
+        if (data.Length == 0)
+        {
+            MessageBox.Show("Gönderilecek veri boş.", "UDP Gönder");
+            return;
+        }
+
+        string ip = txtDstIp.Text.Trim();
+        try
+        {
+            ProtocolResponse resp = await _serial.SendCommandAsync(
+                $"UDP SEND {n.Index} {sock.Nth} {ip} {dstPort} {data}");
+            TermLine(resp.Ok
+                ? $"UDP gönderildi -> {ip}:{dstPort} ({data.Length} bayt)"
+                : $"UDP gönderilemedi: {resp.Status}");
+        }
+        catch (Exception ex)
+        {
+            TermLine($"UDP gönderilemedi: {ex.Message}");
+        }
+    }
+
+    // ------------------------------------------------------------------
+    //  Terminal: ping komutları + ham giriş
+    // ------------------------------------------------------------------
+
+    private void TxtInput_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Enter)
+        {
+            RunTerminalInput();
+            e.SuppressKeyPress = true;
+        }
+    }
+
+    private async void RunTerminalInput()
+    {
+        string text = txtInput.Text.Trim();
+        if (text.Length == 0) return;
+        txtInput.Clear();
+        txtInput.Focus();
+
+        // "ping <IP> [-t]" -> protokol üzerinden, uygulama tarafında döngü
+        if (text.StartsWith("ping ", StringComparison.OrdinalIgnoreCase))
+        {
+            string rest = text.Substring(5).Trim();
+            bool continuous = rest.EndsWith("-t", StringComparison.OrdinalIgnoreCase);
+            if (continuous) rest = rest.Substring(0, rest.Length - 2).Trim();
+
+            if (!IPAddress.TryParse(rest, out _))
+            {
+                TermLine($"Geçersiz IP: {rest}");
+                return;
+            }
+
+            NetifInfo? n = SelectedNetif(cmbTermNetif);
+            if (n == null)
+            {
+                TermLine("Önce bir netif seç.");
+                return;
+            }
+
+            await RunPingAsync(n.Index, rest, continuous);
+            return;
+        }
+
+        // tanınmayan giriş: ham olarak karta yolla (insan menüsü için)
+        _serial.SendText(text + "\r");
+        _pausePollUntil = DateTime.Now.AddSeconds(15);
+    }
+
+    private async Task RunPingAsync(int netifIndex, string ip, bool continuous)
+    {
+        _pingCts = new CancellationTokenSource();
+        CancellationToken token = _pingCts.Token;
+
+        btnStop.Enabled = true;
+        btnSend.Enabled = false;
+        txtInput.Enabled = false;
+
+        int sent = 0, received = 0;
+        int rttMin = int.MaxValue, rttMax = 0, rttSum = 0;
+
+        TermLine(continuous
+            ? $"{ip} pingleniyor ({netifIndex}.netif) — durdurmak için Durdur:"
+            : $"{ip} pingleniyor ({netifIndex}.netif):");
+
+        try
+        {
+            for (int i = 0; continuous || i < PingAttempts; i++)
+            {
+                if (token.IsCancellationRequested) break;
+
+                sent++;
+                ProtocolResponse resp = await _serial.SendCommandAsync($"PING {netifIndex} {ip}", 5000);
+                if (!resp.Ok)
+                {
+                    TermLine($"Ping hatası: {resp.Status}");
+                    break;
+                }
+
+                PingReply reply = Protocol.ParsePing(resp);
+                if (reply.Success)
+                {
+                    received++;
+                    rttSum += reply.RttMs;
+                    if (reply.RttMs < rttMin) rttMin = reply.RttMs;
+                    if (reply.RttMs > rttMax) rttMax = reply.RttMs;
+                    TermLine($"   {reply.From} yanıt: seq={reply.Seq} bytes={reply.Bytes} " +
+                             $"süre={reply.RttMs}ms TTL={reply.Ttl}");
+                }
+                else
+                {
+                    TermLine("   İstek zaman aşımına uğradı");
+                }
+
+                if (continuous)
+                {
+                    try { await Task.Delay(1000, token); }
+                    catch (TaskCanceledException) { break; }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            TermLine($"Ping hatası: {ex.Message}");
+        }
+        finally
+        {
+            int loss = sent > 0 ? (sent - received) * 100 / sent : 0;
+            TermLine($"--- {ip} istatistik: {sent} gönderildi, {received} alındı, %{loss} kayıp ---");
+            if (received > 0)
+                TermLine($"    rtt min/ort/max = {rttMin}/{rttSum / received}/{rttMax} ms");
+
+            _pingCts?.Dispose();
+            _pingCts = null;
+            btnStop.Enabled = false;
+            btnSend.Enabled = _serial.IsOpen;
+            txtInput.Enabled = _serial.IsOpen;
+            txtInput.Focus();
+        }
+    }
 
     private void BtnEnterMenu_Click(object? sender, EventArgs e)
     {
         _serial.SendText("q");
         // insan menüsü açıkken NETIF LIST baytları menü girişine karışmasın
         _pausePollUntil = DateTime.Now.AddSeconds(60);
+        TermLine("Kart menüsü açıldı — çıkmak için menüde bir işlemi tamamla.");
     }
 
-    private void SendTerminalLine()
+    /// <summary>Karttan gelen istem dışı satırlar (ör. "UDP RX: ...").</summary>
+    private void OnAsyncLine(string line)
     {
-        string text = txtInput.Text;
-        if (text.Length == 0) return;
-
-        _serial.SendText(text + "\r");
-        _pausePollUntil = DateTime.Now.AddSeconds(15);   // etkileşim sürüyor olabilir
-        txtInput.Clear();
-        txtInput.Focus();
+        if (line.StartsWith("UDP RX:") || line.StartsWith("Data:"))
+            TermLine(line);
     }
 
-    private void TxtInput_KeyDown(object? sender, KeyEventArgs e)
+    private void TermLine(string text)
     {
-        if (e.KeyCode == Keys.Enter)
-        {
-            SendTerminalLine();
-            e.SuppressKeyPress = true;
-        }
+        txtTermOut.AppendText(text + Environment.NewLine);
     }
 }

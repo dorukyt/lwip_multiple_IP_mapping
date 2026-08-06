@@ -1208,6 +1208,137 @@ static void cmd_sock_close(const char *args)
     cmd_out("#END SOCKCLOSE OK\r\n");
 }
 
+/* PING <idx> <ip>   -- TEK deneme; tekrar/surekli dongusunu uygulama yonetir */
+static void cmd_ping(const char *args)
+{
+    int idx = 0;
+    char ip_s[16];
+    ip_addr_t target;
+    struct netif *n;
+    ping_result_t res;
+    char line[96];
+    char from_str[16];
+    int len;
+
+    cmd_out("#BEGIN PING\r\n");
+
+    if (sscanf(args, "%d %15s", &idx, ip_s) != 2 || !ipaddr_aton(ip_s, &target))
+    {
+        cmd_out("#END PING ERR:bad_args\r\n");
+        return;
+    }
+    n = cmd_netif_by_index(idx);
+    if (NULL == n)
+    {
+        cmd_out("#END PING ERR:bad_index\r\n");
+        return;
+    }
+    if (ERR_OK != ping_send(n, &target))
+    {
+        cmd_out("#END PING ERR:send_failed\r\n");
+        return;
+    }
+
+    if (ping_wait_reply(PING_TIMEOUT_MS, &res))
+    {
+        ipaddr_ntoa_r(&res.from, from_str, sizeof(from_str));
+        len = snprintf(line, sizeof(line), "#PONG %s %u %u %lu %u\r\n",
+                       from_str, (unsigned) res.seqno, (unsigned) res.data_len,
+                       (unsigned long) res.rtt_ms, (unsigned) res.ttl);
+        sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
+    }
+    else
+    {
+        cmd_out("#TIMEOUT\r\n");
+    }
+
+    cmd_out("#END PING OK\r\n");
+}
+
+/* SCAN <idx>  -- scan_network "Host up: ..." satirlarini kendisi basar */
+static void cmd_scan(const char *args)
+{
+    struct netif *n = cmd_netif_by_index(atoi(args));
+
+    cmd_out("#BEGIN SCAN\r\n");
+
+    if (NULL == n)
+    {
+        cmd_out("#END SCAN ERR:bad_index\r\n");
+        return;
+    }
+    if (ERR_OK != scan_network(n))
+    {
+        cmd_out("#END SCAN ERR:scan_failed\r\n");
+        return;
+    }
+    cmd_out("#END SCAN OK\r\n");
+}
+
+/* ARPRESET -- tum netif'lerin ARP tablolarini temizle */
+static void cmd_arp_reset(void)
+{
+    struct netif *n;
+
+    cmd_out("#BEGIN ARPRESET\r\n");
+    for (n = netif_list; n != NULL; n = n->next)
+    {
+        etharp_cleanup_netif(n);
+    }
+    cmd_out("#END ARPRESET OK\r\n");
+}
+
+/* UDP SEND <idx> <nth> <dstip> <dstport> <veri...> */
+static void cmd_udp_send(char *args)
+{
+    int idx = 0, nth = 0, port = 0;
+    char ip_s[16];
+    int consumed = 0;
+    const char *data;
+    ip_addr_t dst;
+    struct netif *n;
+    udp_netif_socket_info_t sock;
+
+    cmd_out("#BEGIN UDPSEND\r\n");
+
+    /* %n : sayilar+IP+port okunduktan sonra kacinci karakterde kaldigimiz */
+    if (sscanf(args, "%d %d %15s %d %n", &idx, &nth, ip_s, &port, &consumed) != 4
+        || !ipaddr_aton(ip_s, &dst) || port < 1 || port > 65535)
+    {
+        cmd_out("#END UDPSEND ERR:bad_args\r\n");
+        return;
+    }
+
+    data = args + consumed;          /* satirin geri kalani = veri */
+    if ('\0' == *data)
+    {
+        cmd_out("#END UDPSEND ERR:no_data\r\n");
+        return;
+    }
+
+    n = cmd_netif_by_index(idx);
+    if (NULL == n)
+    {
+        cmd_out("#END UDPSEND ERR:bad_index\r\n");
+        return;
+    }
+    if (nth < 1 || nth > udp_source_count_sockets(n))
+    {
+        cmd_out("#END UDPSEND ERR:bad_socket\r\n");
+        return;
+    }
+
+    sock = udp_source_get_socket(n, (u8_t)(nth - 1));
+    if (ERR_OK != udp_source_data_send(sock.socket_id, sock.netif, &dst, (u16_t) port,
+                                       (const u8_t*) data, (u16_t) strlen(data)))
+    {
+        cmd_out("#END UDPSEND ERR:send_failed\r\n");
+        return;
+    }
+
+    cmd_out("#END UDPSEND OK\r\n");
+}
+
 /* tam bir komut satirini isle */
 static void cmd_dispatch(char *line)
 {
@@ -1216,6 +1347,10 @@ static void cmd_dispatch(char *line)
     else if (strncmp(line, "NETIF DEL ", 10) == 0)  cmd_netif_del(line + 10);
     else if (strncmp(line, "SOCK OPEN ", 10) == 0)  cmd_sock_open(line + 10);
     else if (strncmp(line, "SOCK CLOSE ", 11) == 0) cmd_sock_close(line + 11);
+    else if (strncmp(line, "PING ", 5) == 0)        cmd_ping(line + 5);
+    else if (strncmp(line, "SCAN ", 5) == 0)        cmd_scan(line + 5);
+    else if (strcmp (line, "ARPRESET") == 0)        cmd_arp_reset();
+    else if (strncmp(line, "UDP SEND ", 9) == 0)    cmd_udp_send(line + 9);
     else                                            cmd_out("#ERR unknown_command\r\n");
 }
 

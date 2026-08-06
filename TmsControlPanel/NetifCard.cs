@@ -12,6 +12,8 @@ public class NetifCard : Panel
     public event Action<NetifCard>? DeleteRequested;
     /// <summary>Bir soket çipindeki ✕ butonuna basıldı.</summary>
     public event Action<NetifCard, SocketInfo>? SocketDeleteRequested;
+    /// <summary>Soket şeridindeki + çipine basıldı (yeni soket aç).</summary>
+    public event Action<NetifCard>? SocketAddRequested;
 
     private const int HeaderHeight = 62;
     private const int SocketRowHeight = 44;
@@ -118,7 +120,6 @@ public class NetifCard : Panel
                 AutoSize = true,
                 Margin = new Padding(6, 10, 4, 4)
             });
-            return;
         }
 
         foreach (SocketInfo sock in Netif.Sockets)
@@ -153,5 +154,21 @@ public class NetifCard : Panel
 
             _socketRow.Controls.Add(chip);
         }
+
+        // şeridin sonunda "yeni soket" çipi
+        var btnAdd = new Button
+        {
+            Text = "+",
+            Width = 34,
+            Height = 30,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 10f, FontStyle.Bold),
+            ForeColor = Color.SteelBlue,
+            Cursor = Cursors.Hand,
+            Margin = new Padding(4, 3, 4, 3)
+        };
+        btnAdd.FlatAppearance.BorderSize = 1;
+        btnAdd.Click += (s, e) => SocketAddRequested?.Invoke(this);
+        _socketRow.Controls.Add(btnAdd);
     }
 }
