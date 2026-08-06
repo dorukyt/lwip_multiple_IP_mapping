@@ -94,7 +94,7 @@ static void get_ip_bytes(const ip_addr_t *addr, uint8_t *out)
  *     byte[34]    = ICMP Type 0x00 (Echo Reply)
  */
 
-#define DIAG_MAX_NETIFS  4
+#define DIAG_MAX_NETIFS  8
 
 static struct {
     struct netif          *nif;
