@@ -213,11 +213,11 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
                         char rx_info[112];
                         int msg_len = snprintf(
                                 rx_info, sizeof(rx_info),
-                                "\r\nUDP RX: %u bytes, %s:%u -> %s:%u\r\n",
-                                (unsigned) rx_msg.data_len,
+                                "\r\n#EVT UDPRX %s:%u -> %s:%u %u bayt\r\n",
                                 ipaddr_ntoa(&rx_msg.src_ip),
                                 (unsigned) rx_msg.src_port, my_ip_str,
-                                (unsigned) socket.local_port);
+                                (unsigned) socket.local_port,
+                                (unsigned) rx_msg.data_len);
                         sciDisplayText(sciREGx, (uint8_t*) rx_info,
                                        (uint32_t) msg_len);
 
@@ -226,7 +226,7 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
                             u16_t print_len = rx_msg.data_len;
                             if (print_len > 64)
                                 print_len = 64;
-                            sciDisplayText(sciREGx, (uint8_t*) "Data: ", 6);
+                            sciDisplayText(sciREGx, (uint8_t*) "#EVT Data: ", 11);
                             sciDisplayText(sciREGx, rx_msg.data,
                                            (uint32_t) print_len);
                             sciDisplayText(sciREGx, txtCRLF, sizeof(txtCRLF));
@@ -246,7 +246,10 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
             {
                 terminal_input_flag = 1;
             }
-            /* 'q' dışındaki baytlar yutulur (menü dışındayken önemsiz) */
+            else
+            {
+                cmd_channel_feed(key);   // 'q' disindaki baytlar -> yapisal komut kanali
+            }
         }
 
         if(1 == terminal_input_flag){
