@@ -204,7 +204,6 @@ u8_t ping_wait_reply(u32_t timeout_ms, ping_result_t *out)
     return 0;
 }
 
-//TODO: Complete this
 err_t scan_network(struct netif *n)
 {
     ip_addr_t target;
