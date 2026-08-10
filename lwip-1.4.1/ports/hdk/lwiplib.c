@@ -467,15 +467,11 @@ static err_t hdkif_alias_init(struct netif *netif)
  *
  * \return  Sanal IP adresi (basarili), 0 (hata).
  *
- * \note    ONEMLI ACIK KONU (asagidaki "ARP notu"na bakin): Bu
- *          fonksiyon IP-katmani teslimatini (ip_input netif_list
- *          taramasi) ve TX cikisini dogru sekilde paylastirir. ANCAK
- *          etharp.c icindeki etharp_arp_input()'un ARP-REPLY
- *          uretirken netif_list'i mi yoksa sadece kendisine verilen
- *          tek netif'i mi kontrol ettigi, lwIP 1.4.1'in etharp.c
- *          kaynagina bagli. Sizin etharp.c dosyaniz henuz elimde
- *          olmadigi icin bu satiri %100 dogrulayamiyorum -- asagidaki
- *          yaniti okuyun.
+ * \note    Alias IP'ye gelen ARP istegine cevap verilebilmesi icin
+ *          LWIP_ARP_FILTER_NETIF kancasi acik ve
+ *          netif_alias_route_filter() bagli olmali (lwipopts.h).
+ *          Kanca olmadan etharp_arp_input yalnizca fiziksel netif'in
+ *          adresine bakar, alias IP'ye cevap uretilmez.
  */
 unsigned int lwIPAliasAdd(unsigned int primaryInstNum, unsigned int ipAddr,
                           unsigned int netMask, unsigned int gwAddr)
@@ -486,15 +482,8 @@ unsigned int lwIPAliasAdd(unsigned int primaryInstNum, unsigned int ipAddr,
     struct netif  *aliasNetif;
     unsigned int  *ipAddrPtr;
     u8_t idx;
-    u8_t alias_amount = 0;
 
-    for(idx = 0; idx < MAX_ALIAS_NETIF; idx++)
-    {
-        if(1 == alias_list[idx].used)
-            alias_amount++;
-    }
-
-    if ((!lwIPCoreReady) || (alias_amount > MAX_ALIAS_NETIF))
+    if (!lwIPCoreReady)
     {
         return 0U;
     }
@@ -523,7 +512,7 @@ unsigned int lwIPAliasAdd(unsigned int primaryInstNum, unsigned int ipAddr,
             return (*ipAddrPtr);
         }
     }
-    return 0U;
+    return 0U;   /* bos slot yok: havuz dolu */
 }
 
 void lwIPAliasRemove(struct netif *netif)

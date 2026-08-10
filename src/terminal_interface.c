@@ -25,32 +25,8 @@
 #define TERM_CTRLC 0x03
 uint8_t cmd_buf[CMD_BUFFER_SIZE];
 
-static dest_node_t dest_pool[MAX_DEST];
-
 char Spacer[] = "*--------------------------------------*\r\n\n";
 
-dest_node_t *dest_list_add(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
-{
-    dest_node_t *new_node = NULL;
-
-    int i;
-    for(i = 0; i < MAX_DEST; i++)
-    {
-        if(dest_pool[i].in_use == 0)
-        {
-        new_node = &dest_pool[i];
-        break;
-        }
-    }
-    if(NULL == new_node) return NULL;
-    new_node->in_use = 1;
-    IP4_ADDR(&new_node->dest_addr, a , b , c , d);
-
-    new_node->next = dest_list_head;
-    dest_list_head = new_node;
-
-    return new_node;
-}
 
 /* Tek karakterlik secim okumadan once hatta bekleyen baytlari
  * (ornegin onceki satirdan kalan '\r') temizler, sonra 1 karakter okur.
@@ -99,19 +75,19 @@ void read_terminal_line(void)
     sciSendByte(sciREGx, '\r');
     sciSendByte(sciREGx, '\n');
 
-    fetch_input(cmd_buf, CMD_BUFFER_SIZE);          // tüm satýrý oku (echo + Enter zaten fetch_input'ta)
+    fetch_input(cmd_buf, CMD_BUFFER_SIZE);          // tum satiri oku (echo + Enter zaten fetch_input'ta)
 
-    /* --- komut ayrýþtýrma: "ping <IP>" --- */
+    /* --- komut ayristirma: "ping <IP>" --- */
     if (strncmp((const char*) cmd_buf, "ping ", 5) == 0)
     {
-        terminal_ping_command((const char*) (cmd_buf + 5));   // "ping " sonrasý = IP
+        terminal_ping_command((const char*) (cmd_buf + 5));   // "ping " sonrasi = IP
         return;
     }
 
-    /* boþ satýr -> yoksay */
+    /* bos satir -> yoksay */
     if (cmd_buf[0] == '\0') return;
 
-    /* rakamla baþlamýyorsa -> bilinmeyen komut */
+    /* rakamla baslamiyorsa -> bilinmeyen komut */
     if (cmd_buf[0] < '0' || cmd_buf[0] > '9')
     {
         const char Err[] = "Unknown command\r\n";
@@ -119,7 +95,7 @@ void read_terminal_line(void)
         return;
     }
 
-    int sel = atoi((const char*) cmd_buf);   /* TÜM satýr -> sayý (çok haneli) */
+    int sel = atoi((const char*) cmd_buf);   /* TUM satir -> sayi (cok haneli) */
     switch (sel)
     {
 
@@ -235,8 +211,8 @@ void read_terminal_line(void)
             char Msg1[] = "Input new socket port:\r\n";
             sciSend(sciREGx, sizeof(Msg1) - 1, (uint8_t*) Msg1);
 
-            fetch_input(cmd_buf, CMD_BUFFER_SIZE);   // tüm satýrý cmd_buf'a oku
-            socket_port = (u16_t) atoi((const char*) cmd_buf); // string -> sayý
+            fetch_input(cmd_buf, CMD_BUFFER_SIZE);   // tum satiri cmd_buf'a oku
+            socket_port = (u16_t) atoi((const char*) cmd_buf); // string -> sayi
 
             if (ERR_OK == udp_source_add_listener(n, socket_port, &new_id))
             {
@@ -290,7 +266,7 @@ void read_terminal_line(void)
             }
 
             fetch_input(cmd_buf, CMD_BUFFER_SIZE);
-            uint32_t sel = (uint32_t) atoi((const char*) cmd_buf); // 1 tabanlý seçim
+            uint32_t sel = (uint32_t) atoi((const char*) cmd_buf); // 1 tabanli secim
 
             if (sel < 1 || sel > udp_source_count_sockets(n))
             {
@@ -300,7 +276,7 @@ void read_terminal_line(void)
             }
 
             udp_sock_id_t chosen = udp_source_get_socket(n, sel - 1).socket_id; // numara -> id
-            udp_source_remove_listener(chosen);    // id DEÐERLE geçilir (& YOK)
+            udp_source_remove_listener(chosen);    // id DEGERLE gecilir (& YOK)
 
             const char Msg[] = "\r\nSocket has been succesfully deleted\r\n";
             sciSend(sciREGx, sizeof(Msg) - 1, (uint8_t*) Msg);
@@ -465,7 +441,7 @@ void read_terminal_line(void)
         }
 
         fetch_input(cmd_buf, CMD_BUFFER_SIZE);
-        uint32_t sel = (uint32_t) atoi((const char*) cmd_buf); // 1 tabanlý seçim
+        uint32_t sel = (uint32_t) atoi((const char*) cmd_buf); // 1 tabanli secim
 
         if (sel < 1 || sel > udp_source_count_sockets(n))
         {
@@ -487,12 +463,12 @@ void read_terminal_line(void)
             // "Invalid format (expected IP/port)" , hata
             char Msg1[] = "Invalid format, expected IP/port\r\n";
             sciSend(sciREGx, sizeof(Msg1) - 1, (uint8_t*) Msg1);
-            break;   // ya da uygun þekilde çýk
+            break;   // ya da uygun sekilde cik
         }
 
-        *sep = '\0';                        // '/' yerine null koy , string'i ikiye böl
+        *sep = '\0';                        // '/' yerine null koy , string'i ikiye bol
         char *ip_str   = (char*) cmd_buf;   // "192.168.0.1"  (null'a kadar)
-        char *port_str = sep + 1;           // "5000"         ('/'den sonrasý)
+        char *port_str = sep + 1;           // "5000"         ('/'den sonrasi)
 
         ip_addr_t ip_rx;
         if (!ipaddr_aton(ip_str, &ip_rx))
@@ -504,7 +480,7 @@ void read_terminal_line(void)
         }
 
         u16_t port = (u16_t) atoi(port_str);
-        if (port == 0)                      // atoi 0 = geçersiz/sayý deðil
+        if (port == 0)                      // atoi 0 = gecersiz/sayi degil
         {
             // "Invalid port" , hata
             char Msg1[] = "Invalid Port\r\n";
@@ -672,8 +648,8 @@ void read_terminal_line(void)
 //default buffer is cmd_buf
 void fetch_input(uint8_t *buf, uint32_t max_len)
 {
-    uint32_t len = 0;   // buf'taki karakter sayýsý
-    uint32_t pos = 0;   // imleç konumu (0..len)
+    uint32_t len = 0;   // buf'taki karakter sayisi
+    uint32_t pos = 0;   // imlec konumu (0..len)
     uint32_t i;
     uint8_t  ch;
 
@@ -691,35 +667,35 @@ void fetch_input(uint8_t *buf, uint32_t max_len)
             break;
         }
 
-        /* --- Backspace: imleçten ÖNCEKÝ karakteri sil --- */
+        /* --- Backspace: imlecten ONCEKI karakteri sil --- */
         else if (ch == 0x7F || ch == 0x08)
         {
             if (pos > 0)
             {
-                for (i = pos - 1; i < len - 1; i++) buf[i] = buf[i + 1];  // sola kaydýr
+                for (i = pos - 1; i < len - 1; i++) buf[i] = buf[i + 1];  // sola kaydir
                 len--; pos--;
 
                 sciSendByte(sciREGx, '\b');                      // imleci sola al
-                sciSend(sciREGx, 3, (uint8_t*) "\x1b[K");        // satýr sonuna kadar sil
-                if (len > pos) sciSend(sciREGx, len - pos, &buf[pos]);   // kuyruðu yeniden yaz
+                sciSend(sciREGx, 3, (uint8_t*) "\x1b[K");        // satir sonuna kadar sil
+                if (len > pos) sciSend(sciREGx, len - pos, &buf[pos]);   // kuyrugu yeniden yaz
                 for (i = 0; i < len - pos; i++) sciSendByte(sciREGx, '\b');  // imleci geri getir
             }
         }
 
-        /* --- ESC: ok tuþlarý / Delete --- */
+        /* --- ESC: ok tuslari / Delete --- */
         else if (ch == 0x1B)
         {
             uint8_t seq;
             sciReceive(sciREGx, 1, &seq);            // '['
             if (seq == '[')
             {
-                sciReceive(sciREGx, 1, &seq);        // yön/eylem baytý
+                sciReceive(sciREGx, 1, &seq);        // yon/eylem bayti
 
                 if (seq == 'D' && pos > 0)           // SOL ok
                 {
                     pos--; sciSendByte(sciREGx, '\b');
                 }
-                else if (seq == 'C' && pos < len)    // SAÐ ok
+                else if (seq == 'C' && pos < len)    // SAG ok
                 {
                     pos++; sciSend(sciREGx, 3, (uint8_t*) "\x1b[C");
                 }
@@ -739,20 +715,20 @@ void fetch_input(uint8_t *buf, uint32_t max_len)
                 {
                     sciReceive(sciREGx, 1, &seq);
                 }
-                /* 'A'/'B' (yukarý/aþaðý) ve diðerleri: yoksay */
+                /* 'A'/'B' (yukari/asagi) ve digerleri: yoksay */
             }
         }
 
-        /* --- Yazdýrýlabilir karakter: imleç konumuna EKLE --- */
+        /* --- Yazdirilabilir karakter: imlec konumuna EKLE --- */
         else if (len < max_len - 1)
         {
-            for (i = len; i > pos; i--) buf[i] = buf[i - 1];   // saða kaydýr
+            for (i = len; i > pos; i--) buf[i] = buf[i - 1];   // saga kaydir
             buf[pos] = ch;
             len++;
 
             sciSend(sciREGx, len - pos, &buf[pos]);            // yeni karakter + kuyruk
             pos++;
-            for (i = 0; i < len - pos; i++) sciSendByte(sciREGx, '\b');  // ekleme sonrasýna dön
+            for (i = 0; i < len - pos; i++) sciSendByte(sciREGx, '\b');  // ekleme sonrasina don
         }
         /* buffer dolu -> yoksay */
     }
@@ -907,7 +883,7 @@ void terminal_list_netif(void)
     return;
 }
 
-// ms kadar bekler; bu sýrada Ctrl+C (0x03) gelirse 1 döner (erken çýkýþ), yoksa 0.
+// ms kadar bekler; bu sirada Ctrl+C (0x03) gelirse 1 doner (erken cikis), yoksa 0.
 static uint8_t wait_or_ctrlc(uint32_t ms)
 {
     uint32_t start = rtiREG1->CNT[0U].FRCx;
@@ -924,7 +900,7 @@ static uint8_t wait_or_ctrlc(uint32_t ms)
     return 0;
 }
 
-// "ping <IP>" komutunun gövdesi: IP string'ini alýr, kaynak netif seçtirir,
+// "ping <IP>" komutunun govdesi: IP string'ini alir, kaynak netif sectirir,
 // PING_ATTEMPT_COUNT kez ping atar ve sonunda istatistik basar.
 static void terminal_ping_command(const char *arg)
 {
@@ -941,14 +917,14 @@ static void terminal_ping_command(const char *arg)
     int   sent = 0, recv = 0;
     u32_t rtt_min = 0xFFFFFFFFu, rtt_max = 0, rtt_sum = 0;
 
-    /* argümaný yerel tampona kopyala (üzerinde oynayacaðýz) */
+    /* argumani yerel tampona kopyala (uzerinde oynayacagiz) */
     strncpy(argbuf, arg, sizeof(argbuf) - 1);
     argbuf[sizeof(argbuf) - 1] = '\0';
 
-    /* "-t" bayraðý var mý? (kesmeden ÖNCE ara) */
+    /* "-t" bayragi var mi? (kesmeden ONCE ara) */
     if (strstr(argbuf, "-t") != NULL) continuous = 1;
 
-    /* IP'yi ilk boþlukta kes -> argbuf sadece IP kalsýn */
+    /* IP'yi ilk boslukta kes -> argbuf sadece IP kalsin */
     sp = strchr(argbuf, ' ');
     if (sp != NULL) *sp = '\0';
 
@@ -971,7 +947,7 @@ static void terminal_ping_command(const char *arg)
         len = snprintf(line, sizeof(line), "\r\nPinging %s:\r\n", tgt_str);
     sciSend(sciREGx, (uint32_t) len, (uint8_t*) line);
 
-    /* continuous ise sonsuz, deðilse PING_ATTEMPT_COUNT kez */
+    /* continuous ise sonsuz, degilse PING_ATTEMPT_COUNT kez */
     for (attempt = 0; continuous || attempt < PING_ATTEMPT_COUNT; attempt++)
     {
         ping_result_t res;
@@ -1005,10 +981,10 @@ static void terminal_ping_command(const char *arg)
             sciSend(sciREGx, sizeof(Tmo) - 1, (uint8_t*) Tmo);
         }
 
-        /* sürekli modda: ~1 sn beklerken Ctrl+C'yi de dinle */
+        /* surekli modda: ~1 sn beklerken Ctrl+C'yi de dinle */
         if (continuous)
         {
-            if (wait_or_ctrlc(1000)) break;   // Ctrl+C -> döngüden çýk
+            if (wait_or_ctrlc(1000)) break;   // Ctrl+C -> donguden cik
         }
     }
 
@@ -1037,18 +1013,9 @@ static void terminal_ping_command(const char *arg)
     }
 }
 
-
 /* ============================================================
- *  Yapisal komut kanali (Protokol B)
- *  Ana dongu 'q' disindaki baytlari buraya besler; '\r' gelince
- *  satir bir komut olarak islenir ve '#'-cerceveli yanit basilir.
- *
- *  Komutlar:
- *    NETIF LIST
- *    NETIF ADD <ip> <mask> <gw>
- *    NETIF DEL <idx>
- *    SOCK OPEN <idx> <port>
- *    SOCK CLOSE <idx> <nth>
+ *  Yapisal komut kanali. Protokol tanimi: terminal_interface.h
+ *  Asagidaki kodlar masaustu arayuzu tarafindan kullanilir.
  * ============================================================ */
 
 #define CMD_LINE_MAX 128

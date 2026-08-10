@@ -45,6 +45,8 @@ static s8_t resolve(udp_sock_id_t id)
     return idx;
 }
 
+/* Slotu bosaltir. Once udp_remove(): pcb listeden cikinca callback bir
+ * daha calismaz; durumu ancak ondan sonra temizlemek guvenli. */
 static void remove_slot(u8_t idx)
 {
     if (NULL != s_listeners[idx].pcb)
@@ -239,9 +241,13 @@ u8_t udp_source_poll_rx(udp_sock_id_t socket_id, udp_rx_msg_t *msg)
     return read_stat;
 }
 
+
 //copies the data EMAC driver gives into a udp_pcb
 //we have to pull this data later to process it otherwise the data box stays full
 //if the data is not emptied, consecutive packets gets dropped
+
+/* ISR baglaminda calisir: sadece kopyalar, isleme ana donguye ait.
+ * valid en son set edilir ki ana dongu yarim yazilmis mesaj okumasin. */
 static void udp_rx_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
                             ip_addr_t *addr, u16_t port)
 {
@@ -288,6 +294,7 @@ u16_t udp_source_get_local_port(udp_sock_id_t socket_id)
     return s_listeners[idx].pcb->local_port;
 }
 
+/* Netif-soket iliskisi saklanmaz; dizi taranarak turetilir. */
 u8_t udp_source_count_sockets(struct netif *netif)
 {
     u8_t socket_count = 0;
