@@ -12,8 +12,11 @@
 #include "lwip/ip_addr.h"
 #include "lwip/netif.h"
 
+/* Alias netif ekler. Adresler ip_addr_t (ag bayt sirasi). */
 err_t net_if_add(ip_addr_t *ip_addr, ip_addr_t *net_mask, ip_addr_t *gw );
 
+/* Alias netif siler; once soketlerini kaldirir.
+ * Fiziksel netif silinemez, ERR_VAL doner. */
 err_t net_if_remove(struct netif *netif);
 
 #endif /* INCLUDE_NET_MANAGER_H_ */

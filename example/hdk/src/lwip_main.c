@@ -30,7 +30,6 @@
 #include "lwip\inet.h"
 #include "locator.h"
 
-#include "network_diagnostics.h"
 #include "UDP_source.h"
 #include "terminal_interface.h"
 #include <string.h>
@@ -70,12 +69,6 @@ void 	iommMuxEnableMii	(void);
 void 	IntMasterIRQEnable	(void);
 void 	smallDelay			(void);
 void 	sciDisplayText		(sciBASE_t *sci, uint8_t *text,uint32_t length);
-
-extern volatile uint8_t send_main_flag;
-extern volatile uint8_t send_alias_flag;
-
-//linked list structure for the destination IP addresses
-dest_node_t *dest_list_head = NULL;
 
 void smallDelay(void) {
 	  static volatile unsigned int delayval;
@@ -233,7 +226,7 @@ void EMAC_LwIP_Main (uint8_t * macAddress)
             }
         }
 
-        /* 'q' seri porttan gelince men�y� a� ('sciIsRxReady' guard'� ile bloklamaz) */
+        /* 'q' seri porttan gelince menuyu ac ('sciIsRxReady' guard'i ile bloklamaz) */
         if (sciIsRxReady(sciREGx))
         {
             uint8_t key = (uint8_t) sciReceiveByte(sciREGx);
@@ -369,82 +362,3 @@ void sciNotification(sciBASE_t *sci, uint32_t flags)
 {
 	return;
 }
-
-
-//Test functions to test the IP aliasing feature without connecting the ethernet port
-#if 0
-
-        /* Before printing the next set, wait for a character on the terminal */
-        sciReceive(sciREGx, 1, &testChar);
-
-        uint8_t rx_byte = 0; // rx_byte sıfırlanmalıdır ki önceki karakteri hatırlamasın
-
-        /* Terminalden bir karakter bekle */
-        sciReceive(sciREGx, 1, &rx_byte);
-
-
-        /* ============================================================
-         *  TEST KOMUTLARI
-         *
-         *  'p'  Tek ping testi (ayarlanabilir hedef IP/MAC)
-         *  'd'  4 senaryolu tam diagnostik suiti
-         *  't'  Elle parametreli ozel test
-         * ============================================================ */
-
-        if (rx_byte == 'p')
-        {
-            /* ---- Tek ping testi ----
-             * Hedef IP/MAC'i degistirmek icin network_diagnostics.c
-             * icindeki inject_fake_ping_packet() fonksiyonunun basindaki
-             * USE_BOARD_IP / USE_BOARD_MAC / hedef_ip / hedef_mac
-             * degerlerini degistirin. */
-            inject_fake_ping_packet();
-        }
-        else if (rx_byte == 'd')
-        {
-            /* ---- Tam diagnostik suiti (4 test) ----
-             * Test1: Dogru MAC + Ana IP
-             * Test2: Dogru MAC + Yanlis IP
-             * Test3: Yanlis MAC + Dogru IP
-             * Test4: Dogru MAC + Alias IP  */
-            run_ping_diagnostics();
-        }
-
-        else if (rx_byte == 't')
-        {
-
-            /* ---- Elle parametreli ozel test ----
-             * Istediginiz IP ve MAC kombinasyonunu asagida degistirin. */
-            ping_test_params_t test;
-            int arp_sonuc, icmp_sonuc;
-
-            /* Hedef MAC — kartin kendi MAC'i */
-            test.dst_mac[0]=0x00; test.dst_mac[1]=0x08; test.dst_mac[2]=0xEE;
-            test.dst_mac[3]=0x03; test.dst_mac[4]=0xA6; test.dst_mac[5]=0x6C;
-
-            /* Kaynak MAC — sahte PC */
-            test.src_mac[0]=0x11; test.src_mac[1]=0x22; test.src_mac[2]=0x33;
-            test.src_mac[3]=0x44; test.src_mac[4]=0x55; test.src_mac[5]=0x66;
-
-            /* Kaynak IP — sahte PC */
-            test.src_ip[0]=192; test.src_ip[1]=168;
-            test.src_ip[2]=2;   test.src_ip[3]=100;
-
-            /* Hedef IP — TEST ETMEK ISTEDIGINIZ IP'YI BURAYA YAZIN */
-            test.dst_ip[0]=192; test.dst_ip[1]=168;
-            test.dst_ip[2]=2;   test.dst_ip[3]=50;    /*  alias IP */
-
-            inject_realistic_ping_test(&test, netif_default, &arp_sonuc, &icmp_sonuc);
-
-            sciDisplayText(sciREGx, (uint8_t*)"\r\nARP:  ", 7);
-            if (arp_sonuc == 1)  sciDisplayText(sciREGx, (uint8_t*)"EVET\r\n", 6);
-            else                 sciDisplayText(sciREGx, (uint8_t*)"HAYIR\r\n", 7);
-
-
-            sciDisplayText(sciREGx, (uint8_t*)"ICMP: ", 6);
-            if (icmp_sonuc == 1) sciDisplayText(sciREGx, (uint8_t*)"EVET\r\n", 6);
-            else                 sciDisplayText(sciREGx, (uint8_t*)"HAYIR\r\n", 7);
-
-        }
-
-#endif

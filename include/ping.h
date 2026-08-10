@@ -34,7 +34,8 @@ err_t ping_send(struct netif *netif, ip_addr_t *target);
  * passes; returns 1 and fills *out on success, 0 on timeout */
 u8_t ping_wait_reply(u32_t timeout_ms, ping_result_t *out);
 
-//scans the whole network with ARP request to find out network
+/* Netif'in alt agini ARP ile tarar; canli host'lari IP ve MAC ile
+ * terminale listeler. Bloklar (~13 sn). */
 err_t scan_network(struct netif *n);
 
 #endif /* INCLUDE_PING_H_ */

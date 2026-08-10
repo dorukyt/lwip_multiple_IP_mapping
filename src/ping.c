@@ -204,6 +204,11 @@ u8_t ping_wait_reply(u32_t timeout_ms, ping_result_t *out)
     return 0;
 }
 
+/* Netif'in alt agini ARP ile tarar, cevap veren host'lari terminale basar.
+ * ARP tablosu sonuc tamponu olarak kullanilir: etharp_query ile istek
+ * gonderilir, 50 ms beklenir, etharp_find_addr ile sonuc okunur.
+ * NO_SYS'te etharp_tmr calismadigi icin tablo 10 hedefte bir temizlenir.
+ * ~13 sn surer ve bu sure boyunca ana dongu bloklanir. */
 err_t scan_network(struct netif *n)
 {
     ip_addr_t target;
