@@ -1,2 +1,16 @@
 *.md
+
+# CCS derleme ciktilari
 Debug/
+Release/
+*.out
+*.map
+
+# .NET / Visual Studio derleme ciktilari
+TmsControlPanel/bin/
+TmsControlPanel/obj/
+*.user
+*.suo
+
+# Word dokumanini ureten yardimci script; makineye ozgu mutlak yollar icerir
+docs/.build_docx.txt
