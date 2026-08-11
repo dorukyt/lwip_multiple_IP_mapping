@@ -474,7 +474,6 @@ hdkif_hw_init(struct netif *netif)
   }
   sciDisplayText(sciREGx, txtCRLF2, sizeof(txtCRLF2));
 
-  //TODO
   sciDisplayText(sciREGx, txtPhyGetLnkSts, sizeof(txtPhyGetLnkSts));
   if(!Dp83640LinkStatusGet(hdkif->mdio_base, hdkif->phy_addr, 0xFFFF)) {
       sciDisplayText(sciREGx, txtCRLF2, sizeof(txtCRLF2));

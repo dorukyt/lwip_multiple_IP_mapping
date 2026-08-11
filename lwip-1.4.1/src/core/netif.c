@@ -181,7 +181,7 @@ struct netif *netif_add(struct netif *netif, ip_addr_t *ipaddr, ip_addr_t *netma
 
   err_t err = init(netif);
   /* call user specified initialization function for netif */
-  if (err != ERR_OK || err == ERR_CONN) {
+  if (err != ERR_OK && err != ERR_CONN) {
     return NULL;
   }
 
