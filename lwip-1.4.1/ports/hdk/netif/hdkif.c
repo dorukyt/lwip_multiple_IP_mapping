@@ -388,6 +388,7 @@ static uint8_t		txtCRLF2[]			= {'\r', '\n'};
 static uint8_t		txtSuccess[]		= {"SUCCESS"};
 static uint8_t		txtProgress[]		= {"."};
 static uint8_t		txtError[]			= {"!!! ERROR !!!"};
+static uint8_t      noConn[]          = {"Warning!!! Device is not connected to a network"};
 static uint8_t		txtPhyGetId[]		= {"	DEBUG - Getting PHY ID..."};
 static uint8_t		txtPhyGetAlSts[]	= {"	DEBUG - Getting PHY Alive Status..."};
 static uint8_t		txtPhyGetLnkSts[]	= {"	DEBUG - Getting PHY Link Status..."};
@@ -473,10 +474,12 @@ hdkif_hw_init(struct netif *netif)
   }
   sciDisplayText(sciREGx, txtCRLF2, sizeof(txtCRLF2));
 
+  //TODO
   sciDisplayText(sciREGx, txtPhyGetLnkSts, sizeof(txtPhyGetLnkSts));
-  if(0/*!Dp83640LinkStatusGet(hdkif->mdio_base, hdkif->phy_addr, 0xFFFF)*/) {
-	  sciDisplayText(sciREGx, txtError, sizeof(txtError));
-      return ERR_CONN;
+  if(!Dp83640LinkStatusGet(hdkif->mdio_base, hdkif->phy_addr, 0xFFFF)) {
+      sciDisplayText(sciREGx, txtCRLF2, sizeof(txtCRLF2));
+	  sciDisplayText(sciREGx, noConn, sizeof(noConn));
+      //return ERR_CONN;
   } else {
   	  sciDisplayText(sciREGx, txtSuccess, sizeof(txtSuccess));
   }

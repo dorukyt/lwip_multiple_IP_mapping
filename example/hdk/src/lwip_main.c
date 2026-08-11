@@ -47,7 +47,7 @@
 #endif
 
 uint8_t		txtCRLF[]			= {'\r', '\n'};
-uint8_t  	txtTitle[] 			= {"HERCULES MICROCONTROLLERS"};
+uint8_t     txtTitle[]          = {"HERCULES MICROCONTROLLERS"};
 uint8_t		txtTI[]				= {"Texas Instruments"};
 uint8_t		txtLittleEndian[] 	= {"Little Endian device"};
 uint8_t		txtBigEndian[]		= {"Big Endian device"};

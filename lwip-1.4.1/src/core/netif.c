@@ -179,8 +179,9 @@ struct netif *netif_add(struct netif *netif, ip_addr_t *ipaddr, ip_addr_t *netma
 
   netif_set_addr(netif, ipaddr, netmask, gw);
 
+  err_t err = init(netif);
   /* call user specified initialization function for netif */
-  if (init(netif) != ERR_OK) {
+  if (err != ERR_OK || err == ERR_CONN) {
     return NULL;
   }
 

@@ -69,7 +69,6 @@
 #include "lwip\inet.h"
 #include "locator.h"
 
-#include "network_diagnostics.h"
 #include "UDP_source.h"
 #include <string.h> // strlen için gerekli
 #include <stdio.h>
